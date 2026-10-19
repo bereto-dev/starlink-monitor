@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Network
 import UserNotifications
 
 /// Polls the dish directly (default) or a collector, and fires outage notifications.
@@ -14,6 +15,9 @@ final class Monitor: ObservableObject {
     @Published private(set) var outages: Outages?
     @Published private(set) var reachable = true   // dish or collector answering
     @Published private(set) var offStarlink = false // dish silent but internet works: another network
+    @Published private(set) var lastSeen: LastSeen? = Monitor.loadLastSeen()
+    @Published private(set) var connection: String?        // current network, e.g. "Wi‑Fi"
+    @Published private(set) var internetLatencyMs: Double? // round trip of the internet check
 
     static let nowEvery: TimeInterval = 2
     static let historyEvery: TimeInterval = 30
@@ -33,6 +37,9 @@ final class Monitor: ObservableObject {
     private var generation = 0   // bumps on source change so stale responses are dropped
     private var nowInFlight = false
     private var lastProbe: (date: Date, online: Bool)?
+    private var lastSeenSaved = Date.distantPast
+    private let pathMonitor = NWPathMonitor()
+    static let saveLastSeenEvery: TimeInterval = 30
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -77,6 +84,11 @@ final class Monitor: ObservableObject {
 
     init() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let description = Monitor.describe(path)
+            Task { @MainActor in self?.networkChanged(description) }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "StarlinkBar.path"))
         start()
     }
 
@@ -137,6 +149,7 @@ final class Monitor: ObservableObject {
                 lastOk = Date()
                 reachable = true
                 apply(rules.snapshot(s))
+                rememberLastSeen()
                 return
             }
             // The dish didn't answer. If the internet still works, this Mac is on another network,
@@ -189,11 +202,56 @@ final class Monitor: ObservableObject {
         var req = URLRequest(url: Self.internetProbeURL, cachePolicy: .reloadIgnoringLocalCacheData)
         req.timeoutInterval = 4
         var online = false
-        if let (data, resp) = try? await session.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 {
+        let metrics = MetricsCollector()
+        if let (data, resp) = try? await session.data(for: req, delegate: metrics),
+           (resp as? HTTPURLResponse)?.statusCode == 200 {
             online = String(decoding: data, as: UTF8.self).contains("Success")
         }
+        // Request -> first response byte, without DNS/TCP/TLS setup: close to a ping, not exact.
+        internetLatencyMs = online ? metrics.requestRoundTripMs : nil
         lastProbe = (Date(), online)
         return online
+    }
+
+    // MARK: - Off-Starlink context
+
+    private func networkChanged(_ description: String?) {
+        connection = description
+        lastProbe = nil  // the old answer is about the previous network
+        Task { await pollNow() }
+    }
+
+    nonisolated static func describe(_ path: NWPath) -> String? {
+        guard path.status == .satisfied else { return nil }
+        var s: String
+        if path.usesInterfaceType(.wiredEthernet) {
+            s = "Ethernet"
+        } else if path.usesInterfaceType(.wifi) {
+            s = path.isExpensive ? "Personal hotspot" : "Wi‑Fi"
+        } else if path.usesInterfaceType(.cellular) {
+            s = "Cellular"
+        } else {
+            s = "Other network"
+        }
+        if path.isConstrained { s += " · Low Data Mode" }
+        return s
+    }
+
+    private func rememberLastSeen(force: Bool = false) {
+        guard source == .dish, let n = now, n.dishReachable else { return }
+        guard force || Date().timeIntervalSince(lastSeenSaved) >= Self.saveLastSeenEvery else { return }
+        let seen = LastSeen(date: Date(), latencyMs: n.latencyMs, downBps: n.downBps, upBps: n.upBps,
+                            uptimeS: n.uptimeS, outages: outages ?? lastSeen?.outagesToday)
+        lastSeen = seen
+        lastSeenSaved = Date()
+        if let data = try? JSONEncoder().encode(seen) {
+            UserDefaults.standard.set(data, forKey: "lastSeen")
+        }
+    }
+
+    private static func loadLastSeen() -> LastSeen? {
+        guard let data = UserDefaults.standard.data(forKey: "lastSeen") else { return nil }
+        return try? JSONDecoder().decode(LastSeen.self, from: data)
     }
 
     private func apply(_ n: NowStatus) {
@@ -225,6 +283,7 @@ final class Monitor: ObservableObject {
                 count: today.count,
                 totalS: today.reduce(0) { $0 + $1.durationS },
                 items: today.map { Outages.Item(startTs: $0.startTs, durationS: $0.durationS, cause: $0.cause) })
+            rememberLastSeen(force: true)
         case .collector:
             if let h: History = try? await getJSON("/api/history?range=15m"), gen == generation {
                 var lat: [Point] = [], down: [Point] = []
@@ -392,5 +451,16 @@ struct StateRules {
             uptimeS: s?.uptimeS,
             device: s.map { NowStatus.Device(id: nil, hardware: $0.hardware, software: $0.software, country: nil) },
             lastSpeedtest: nil)
+    }
+}
+
+/// Collects the request/response timing of one URLSession task.
+private final class MetricsCollector: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private(set) var requestRoundTripMs: Double?
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        guard let t = metrics.transactionMetrics.last,
+              let start = t.requestStartDate, let end = t.responseStartDate else { return }
+        requestRoundTripMs = end.timeIntervalSince(start) * 1000
     }
 }

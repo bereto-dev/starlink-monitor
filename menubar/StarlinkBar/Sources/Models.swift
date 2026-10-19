@@ -41,8 +41,8 @@ struct History: Decodable {
     let downBps: [Double?]
 }
 
-struct Outages: Decodable {
-    struct Item: Decodable, Identifiable {
+struct Outages: Codable {
+    struct Item: Codable, Identifiable {
         let startTs: Double
         let durationS: Double
         let cause: String
@@ -52,6 +52,22 @@ struct Outages: Decodable {
     let count: Int
     let totalS: Double
     let items: [Item]
+}
+
+/// Last values seen from the dish, kept so they can be shown while off Starlink.
+struct LastSeen: Codable {
+    var date: Date
+    var latencyMs: Double?
+    var downBps: Double?
+    var upBps: Double?
+    var uptimeS: Double?
+    var outages: Outages?
+
+    /// Outages only make sense for the day they were recorded.
+    var outagesToday: Outages? {
+        guard let outages, Calendar.current.isDateInToday(date) else { return nil }
+        return outages
+    }
 }
 
 struct Point: Identifiable {

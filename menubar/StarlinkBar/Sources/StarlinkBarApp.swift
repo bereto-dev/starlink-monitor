@@ -133,11 +133,53 @@ struct PanelView: View {
     }
 
     private var notOnStarlink: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("You're online through another network.").font(.callout)
-            Text("The Starlink dish at \(monitor.dishHost) isn't reachable from here, so there's nothing to monitor. StarlinkBar picks up again on its own when this Mac is back on Starlink. No outage alerts in the meantime.")
-                .font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("You're online through another network.").font(.callout)
+                HStack(spacing: 16) {
+                    Metric(label: "Connection", value: monitor.connection ?? "--", unit: "", size: 15)
+                    Metric(label: "Latency (HTTPS)",
+                           value: monitor.internetLatencyMs.map { "\(Int($0.rounded()))" } ?? "--",
+                           unit: "ms", size: 15)
+                }
+            }
+            Divider()
+            if let seen = monitor.lastSeen {
+                lastSeenView(seen)
+            } else {
+                Text("No Starlink data yet. StarlinkBar starts monitoring when this Mac joins a Starlink network.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Resumes on its own when you're back on Starlink. No outage alerts in the meantime.")
+                .font(.caption2).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func lastSeenView(_ seen: LastSeen) -> some View {
+        let age = Date().timeIntervalSince(seen.date)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Last seen on Starlink · " + (age < 60 ? "just now" : Fmt.ago(age) + " ago"))
+                .font(.caption.bold()).foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                Metric(label: "Latency", value: seen.latencyMs.map { "\(Int($0.rounded()))" } ?? "--", unit: "ms", size: 15)
+                Metric(label: "Download", value: Fmt.mbps(seen.downBps), unit: "Mbps", size: 15)
+                Metric(label: "Upload", value: Fmt.mbps(seen.upBps), unit: "Mbps", size: 15)
+            }
+            .foregroundStyle(.secondary)
+            if let o = seen.outagesToday {
+                Text("Outages today until then: \(o.count) · \(Fmt.duration(o.totalS)) total")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(o.items.prefix(3)) { it in
+                    HStack {
+                        Text(Fmt.clock(it.startTs)).monospacedDigit().frame(width: 44, alignment: .leading)
+                        Text(Fmt.duration(it.durationS)).monospacedDigit().frame(width: 60, alignment: .leading)
+                        Text(Labels.causes[it.cause] ?? it.cause)
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -250,12 +292,13 @@ struct Metric: View {
     let label: String
     let value: String
     let unit: String
+    var size: CGFloat = 22
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit()
-                Text(unit).font(.caption).foregroundStyle(.secondary)
+                Text(value).font(.system(size: size, weight: .semibold)).monospacedDigit()
+                if !unit.isEmpty { Text(unit).font(.caption).foregroundStyle(.secondary) }
             }
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
