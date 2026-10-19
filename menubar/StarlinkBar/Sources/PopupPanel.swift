@@ -1,0 +1,474 @@
+import Cocoa
+
+private let PANEL_W: CGFloat = 260
+private let PAD: CGFloat = 12
+private let CONTENT_W: CGFloat = PANEL_W - 12 - PAD * 2   // card is inset 6 pt on each side
+
+private let GREEN = NSColor(red: 0.25, green: 0.90, blue: 0.50, alpha: 1)
+private let RED = NSColor(red: 1.00, green: 0.42, blue: 0.38, alpha: 1)
+private let ORANGE = NSColor(red: 0.95, green: 0.55, blue: 0.20, alpha: 1)
+
+/// The dropdown card: borderless panel, hand-drawn dark card (same look as EFStatus / AsanaStatus).
+final class PopupPanel: NSPanel {
+    var onRefresh: (() -> Void)?
+
+    private let dotLabel = label("●", size: 9, weight: .semibold, alpha: 0.45)
+    private let headerLabel = label("STARLINK", size: 9, weight: .semibold, alpha: 0.45)
+    private let refreshButton = RefreshButton()
+
+    private let bigLabel = label("—", size: 26, weight: .bold, alpha: 1)
+    private let bigSubLabel = label("", size: 11, weight: .regular, alpha: 0.5)
+    private let sparkline = Sparkline()
+    private let statusLine = wrappingLabel(size: 11, weight: .medium, alpha: 0.75)
+    private let alertLine = wrappingLabel(size: 11, weight: .medium, alpha: 1)
+
+    private let sectionLabel = label("", size: 9, weight: .semibold, alpha: 0.45)
+    private let columns = [Column(alignRight: false), Column(alignRight: false), Column(alignRight: true)]
+    private lazy var columnsRow: NSStackView = {
+        let row = hstack(columns, spacing: 8, align: .top)
+        row.distribution = .equalSpacing  // left, centered and right columns, like INPUT / OUTPUT
+        for c in columns { c.setContentCompressionResistancePriority(.required, for: .horizontal) }
+        return row
+    }()
+
+    private let outagesTitle = label("OUTAGES TODAY", size: 9, weight: .semibold, alpha: 0.45)
+    private let outagesTotal = label("", size: 9, weight: .semibold, alpha: 0.45)
+    private let outagesStack = NSStackView()
+
+    private let footerLabel = wrappingLabel(size: 10, weight: .regular, alpha: 0.4)
+
+    private let dividers = [Divider(), Divider(), Divider()]
+    private var outagesHeader: NSStackView!
+
+    convenience init() {
+        self.init(
+            contentRect: NSRect(x: 0, y: 0, width: PANEL_W, height: 200),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        isFloatingPanel = true
+        level = .popUpMenu
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = true
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        buildUI()
+    }
+
+    private func buildUI() {
+        let root = NSView(frame: contentView!.bounds)
+        root.autoresizingMask = [.width, .height]
+        contentView = root
+
+        let card = CardView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(card)
+        NSLayoutConstraint.activate([
+            card.topAnchor.constraint(equalTo: root.topAnchor, constant: 6),
+            card.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 6),
+            card.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -6),
+            card.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -6),
+        ])
+
+        refreshButton.onTap = { [weak self] in
+            self?.refreshButton.setLoading(true)
+            self?.onRefresh?()
+        }
+        let headerRow = hstack([dotLabel, headerLabel, spacer(), refreshButton], spacing: 4, align: .centerY)
+        let bigRow = hstack([bigLabel, bigSubLabel], spacing: 6, align: .lastBaseline)
+
+        sparkline.translatesAutoresizingMaskIntoConstraints = false
+        sparkline.heightAnchor.constraint(equalToConstant: 26).isActive = true
+
+        outagesStack.orientation = .vertical
+        outagesStack.alignment = .leading
+        outagesStack.spacing = 3
+        outagesHeader = hstack([outagesTitle, spacer(), outagesTotal], spacing: 4, align: .centerY)
+
+        let stack = NSStackView(views: [
+            headerRow,
+            bigRow,
+            sparkline,
+            statusLine,
+            alertLine,
+            dividers[0],
+            sectionLabel,
+            columnsRow,
+            dividers[1],
+            outagesHeader,
+            outagesStack,
+            dividers[2],
+            footerLabel,
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: PAD, left: PAD, bottom: PAD, right: PAD)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.setCustomSpacing(8, after: sparkline)
+        stack.setCustomSpacing(3, after: sectionLabel)
+
+        card.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: card.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+        ])
+        for v in [headerRow, sparkline, columnsRow, outagesHeader!, outagesStack] + dividers as [NSView] {
+            v.widthAnchor.constraint(equalToConstant: CONTENT_W).isActive = true
+        }
+        for l in [statusLine, alertLine, footerLabel] {
+            l.preferredMaxLayoutWidth = CONTENT_W
+        }
+    }
+
+    func setRefreshing(_ loading: Bool) {
+        refreshButton.setLoading(loading)
+    }
+
+    // MARK: - Content
+
+    func update(from m: Monitor) {
+        let status = m.status
+        switch status {
+        case .notOnStarlink:
+            showOffStarlink(m)
+        case .unreachable, .starting:
+            showNotConnected(m, starting: status == .starting)
+        case .ok, .degraded, .down:
+            showLive(m, status: status)
+        }
+        resize()
+    }
+
+    private func setHeader(_ text: String, dot: NSColor?) {
+        headerLabel.stringValue = "STARLINK · " + text
+        dotLabel.textColor = dot ?? NSColor.white.withAlphaComponent(0.35)
+    }
+
+    private func showLive(_ m: Monitor, status: Monitor.Status) {
+        let n = m.now
+        switch status {
+        case .ok: setHeader("CONNECTED", dot: GREEN)
+        case .degraded: setHeader("DEGRADED", dot: ORANGE)
+        default: setHeader("NO INTERNET", dot: RED)
+        }
+
+        if status == .down {
+            bigLabel.stringValue = "Offline"
+            bigLabel.textColor = RED
+            let since = n?.downSince.map { Fmt.duration(Date().timeIntervalSince1970 - $0) }
+            bigSubLabel.stringValue = since.map { "for \($0)" } ?? ""
+        } else {
+            bigLabel.textColor = .white
+            bigLabel.stringValue = n?.latencyMs.map { "\(Int($0.rounded())) ms" } ?? "—"
+            bigSubLabel.stringValue = n?.latencyAvg30sMs.map { "avg \(Int($0.rounded())) ms" } ?? ""
+        }
+
+        sparkline.points = m.latency
+        sparkline.isHidden = false
+
+        var parts: [String] = []
+        if let up = n?.uptimeS { parts.append("Up \(Fmt.ago(up))") }
+        parts.append(String(format: "%.2f %% obstructed", (n?.obstructionFraction ?? 0) * 100))
+        if status == .down, n?.dishReachable == false { parts = ["The dish isn't responding"] }
+        statusLine.stringValue = parts.joined(separator: " · ")
+        statusLine.isHidden = false
+
+        var alerts = (n?.alerts ?? []).map { Labels.alerts[$0] ?? $0 }
+        if n?.currentlyObstructed == true { alerts.insert("Obstructed now", at: 0) }
+        alertLine.stringValue = alerts.joined(separator: " · ")
+        alertLine.textColor = ORANGE
+        alertLine.isHidden = alerts.isEmpty
+
+        dividers[0].isHidden = false
+        sectionLabel.isHidden = true
+        let loss = (n?.dropRate ?? 0) * 100
+        columns[0].set("DOWNLOAD", "\(Fmt.mbps(n?.downBps)) Mbps", color: GREEN)
+        columns[1].set("UPLOAD", "\(Fmt.mbps(n?.upBps)) Mbps", color: .white)
+        columns[2].set("LOSS", String(format: "%.1f %%", loss), color: loss > 2 ? ORANGE : .white)
+        columnsRow.alphaValue = 1
+        columnsRow.isHidden = false
+
+        showOutages(m.outages, title: "OUTAGES TODAY")
+
+        let updated = n.map { Fmt.clock($0.ts) }
+        footerLabel.stringValue = updated.map { "Updated \($0)" } ?? ""
+        footerLabel.isHidden = updated == nil
+        dividers[2].isHidden = footerLabel.isHidden
+    }
+
+    private func showOffStarlink(_ m: Monitor) {
+        setHeader("NOT CONNECTED", dot: nil)
+        bigLabel.textColor = .white
+        // Same layout as on Starlink: latency is the big number, the connection is the detail.
+        bigLabel.stringValue = m.internetLatencyMs.map { "\(Int($0.rounded())) ms" } ?? "—"
+        bigSubLabel.stringValue = m.connection ?? ""
+        sparkline.isHidden = true
+        statusLine.stringValue = "Online through another network"
+        statusLine.isHidden = false
+        alertLine.isHidden = true
+        dividers[0].isHidden = false
+
+        if let seen = m.lastSeen {
+            let age = Date().timeIntervalSince(seen.date)
+            sectionLabel.stringValue = "LAST SEEN ON STARLINK · " + (age < 60 ? "JUST NOW" : Fmt.ago(age).uppercased() + " AGO")
+            sectionLabel.isHidden = false
+            columns[0].set("DOWNLOAD", "\(Fmt.mbps(seen.downBps)) Mbps", color: .white)
+            columns[1].set("UPLOAD", "\(Fmt.mbps(seen.upBps)) Mbps", color: .white)
+            columns[2].set("LATENCY", seen.latencyMs.map { "\(Int($0.rounded())) ms" } ?? "—", color: .white)
+            columnsRow.alphaValue = 0.55
+            columnsRow.isHidden = false
+            showOutages(seen.outagesToday, title: "OUTAGES UNTIL THEN", hideWhenMissing: true)
+        } else {
+            sectionLabel.stringValue = "NO STARLINK DATA YET"
+            sectionLabel.isHidden = false
+            columnsRow.isHidden = true
+            showOutages(nil, title: "", hideWhenMissing: true)
+        }
+
+        footerLabel.stringValue = "Resumes when you're back on Starlink"
+        footerLabel.isHidden = false
+        dividers[2].isHidden = false
+    }
+
+    private func showNotConnected(_ m: Monitor, starting: Bool) {
+        setHeader(starting ? "CONNECTING" : "NOT CONNECTED", dot: nil)
+        bigLabel.textColor = .white
+        bigLabel.stringValue = starting ? "…" : "—"
+        bigSubLabel.stringValue = ""
+        sparkline.isHidden = true
+        alertLine.isHidden = true
+        if starting {
+            statusLine.stringValue = "Looking for the dish…"
+        } else if m.source == .dish {
+            statusLine.stringValue = "No internet, and the dish at \(m.dishHost) isn't answering."
+        } else {
+            statusLine.stringValue = "The collector at \(m.collectorURL.absoluteString) isn't answering."
+        }
+        statusLine.isHidden = false
+        dividers[0].isHidden = starting
+        sectionLabel.isHidden = true
+        columnsRow.isHidden = true
+        showOutages(nil, title: "", hideWhenMissing: true)
+
+        if starting {
+            footerLabel.isHidden = true
+        } else if m.source == .dish {
+            footerLabel.stringValue = "If macOS asked for Local Network access, allow it in System Settings › Privacy & Security › Local Network."
+            footerLabel.isHidden = false
+        } else {
+            footerLabel.stringValue = "Start it with: python3 collector/main.py"
+            footerLabel.isHidden = false
+        }
+        dividers[2].isHidden = true
+    }
+
+    private func showOutages(_ o: Outages?, title: String, hideWhenMissing: Bool = false) {
+        for v in outagesStack.arrangedSubviews { outagesStack.removeArrangedSubview(v); v.removeFromSuperview() }
+        let hidden = hideWhenMissing && o == nil
+        outagesHeader.isHidden = hidden
+        outagesStack.isHidden = hidden
+        dividers[1].isHidden = hidden || columnsRow.isHidden
+        guard !hidden else { return }
+
+        outagesTitle.stringValue = title
+        if let o {
+            outagesTotal.stringValue = "\(o.count) · \(Fmt.duration(o.totalS))"
+            if o.items.isEmpty {
+                outagesStack.addArrangedSubview(row("No outages today", nil))
+            }
+            for it in o.items.prefix(3) {
+                let cause = Labels.causes[it.cause] ?? it.cause
+                outagesStack.addArrangedSubview(row("\(Fmt.clock(it.startTs))  \(cause)", Fmt.duration(it.durationS)))
+            }
+            if o.items.count > 3 {
+                let more = label("and \(o.items.count - 3) more", size: 11, weight: .regular, alpha: 0.4)
+                outagesStack.addArrangedSubview(more)
+            }
+        } else {
+            outagesTotal.stringValue = ""
+            outagesStack.addArrangedSubview(row("Loading…", nil))
+        }
+    }
+
+    private func row(_ name: String, _ value: String?) -> NSStackView {
+        let nameLabel = label(name, size: 11, weight: .regular, alpha: 0.75)
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let valueLabel = label(value ?? "", size: 11, weight: .medium, alpha: 0.5)
+        let r = hstack([nameLabel, spacer(), valueLabel], spacing: 4, align: .centerY)
+        r.widthAnchor.constraint(equalToConstant: CONTENT_W).isActive = true
+        return r
+    }
+
+    private func resize() {
+        contentView?.layoutSubtreeIfNeeded()
+        let fit = contentView!.fittingSize
+        let top = frame.maxY
+        setContentSize(NSSize(width: PANEL_W, height: fit.height))
+        // Grow/shrink downwards so the card stays pinned under the menu bar.
+        if isVisible { setFrameTopLeftPoint(NSPoint(x: frame.minX, y: top)) }
+    }
+}
+
+// MARK: - Helpers
+
+private func label(_ s: String, size: CGFloat, weight: NSFont.Weight, alpha: CGFloat) -> NSTextField {
+    let f = NSTextField(labelWithString: s)
+    f.font = .systemFont(ofSize: size, weight: weight)
+    f.textColor = NSColor.white.withAlphaComponent(alpha)
+    return f
+}
+
+private func wrappingLabel(size: CGFloat, weight: NSFont.Weight, alpha: CGFloat) -> NSTextField {
+    let f = NSTextField(wrappingLabelWithString: "")
+    f.font = .systemFont(ofSize: size, weight: weight)
+    f.textColor = NSColor.white.withAlphaComponent(alpha)
+    return f
+}
+
+private func hstack(_ views: [NSView], spacing: CGFloat, align: NSLayoutConstraint.Attribute) -> NSStackView {
+    let s = NSStackView(views: views)
+    s.orientation = .horizontal
+    switch align {
+    case .lastBaseline: s.alignment = .lastBaseline
+    case .top: s.alignment = .top
+    default: s.alignment = .centerY
+    }
+    s.spacing = spacing
+    return s
+}
+
+private func spacer() -> NSView {
+    let v = NSView()
+    v.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    return v
+}
+
+/// Small uppercase title over a bold value (like EFStatus's INPUT / OUTPUT).
+private final class Column: NSStackView {
+    private let title = label("", size: 9, weight: .semibold, alpha: 0.45)
+    private let value = label("—", size: 13, weight: .bold, alpha: 1)
+
+    convenience init(alignRight: Bool = false) {
+        self.init(frame: .zero)
+        orientation = .vertical
+        alignment = alignRight ? .trailing : .leading
+        spacing = 1
+        addArrangedSubview(title)
+        addArrangedSubview(value)
+    }
+
+    func set(_ t: String, _ v: String, color: NSColor) {
+        title.stringValue = t
+        value.stringValue = v
+        value.textColor = color
+    }
+}
+
+// MARK: - Card, divider, sparkline, refresh button
+
+private final class CardView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds, xRadius: 12, yRadius: 12)
+        NSColor(red: 0.12, green: 0.12, blue: 0.13, alpha: 0.97).setFill()
+        path.fill()
+    }
+}
+
+private final class Divider: NSView {
+    override var intrinsicContentSize: NSSize { NSSize(width: -1, height: 1) }
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.withAlphaComponent(0.1).setFill()
+        bounds.fill()
+    }
+}
+
+/// Last 15 minutes of latency, drawn by hand (takes the place of the other apps' progress bar).
+private final class Sparkline: NSView {
+    var points: [Point] = [] { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let bg = NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4)
+        NSColor.white.withAlphaComponent(0.04).setFill()
+        bg.fill()
+
+        let now = Date()
+        let start = now.addingTimeInterval(-900)
+        let visible = points.filter { $0.date >= start }
+        guard visible.count > 1 else { return }
+        let maxV = max(visible.map(\.value).max() ?? 1, 40) * 1.1
+        let inset: CGFloat = 3
+        let h = bounds.height - inset * 2
+        func pt(_ p: Point) -> NSPoint {
+            NSPoint(x: CGFloat(p.date.timeIntervalSince(start) / 900) * bounds.width,
+                    y: inset + CGFloat(min(p.value, maxV) / maxV) * h)
+        }
+
+        let line = NSBezierPath()
+        line.lineWidth = 1.2
+        line.lineJoinStyle = .round
+        var prev: Point?
+        for p in visible {
+            // Break the line across gaps in the data (outages, app asleep).
+            if let q = prev, p.date.timeIntervalSince(q.date) <= 10 { line.line(to: pt(p)) } else { line.move(to: pt(p)) }
+            prev = p
+        }
+        NSColor.white.withAlphaComponent(0.7).setStroke()
+        line.stroke()
+    }
+}
+
+private final class RefreshButton: NSView {
+    var onTap: (() -> Void)?
+    private let imageView = NSImageView()
+    private var isLoading = false
+
+    override init(frame: NSRect) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
+        let cfg = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+        imageView.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?
+            .withSymbolConfiguration(cfg)
+        imageView.contentTintColor = NSColor.white.withAlphaComponent(0.4)
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            widthAnchor.constraint(equalToConstant: 16),
+            heightAnchor.constraint(equalToConstant: 16),
+        ])
+        addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(tapped)))
+        toolTip = "Refresh now"
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func setLoading(_ loading: Bool) {
+        isLoading = loading
+        imageView.contentTintColor = NSColor.white.withAlphaComponent(loading ? 0.6 : 0.4)
+        imageView.wantsLayer = true
+        guard let layer = imageView.layer else { return }
+        if loading {
+            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            layer.position = CGPoint(x: imageView.frame.midX, y: imageView.frame.midY)
+            let r = CABasicAnimation(keyPath: "transform.rotation")
+            r.fromValue = 0
+            r.toValue = -CGFloat.pi * 2
+            r.duration = 0.8
+            r.repeatCount = .infinity
+            layer.add(r, forKey: "spin")
+        } else {
+            layer.removeAnimation(forKey: "spin")
+        }
+    }
+
+    @objc private func tapped() {
+        guard !isLoading else { return }
+        onTap?()
+    }
+}

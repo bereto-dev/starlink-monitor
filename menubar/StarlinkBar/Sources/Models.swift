@@ -33,6 +33,15 @@ struct NowStatus: Decodable {
     let uptimeS: Double?
     let device: Device?
     let lastSpeedtest: SpeedTest?
+
+    // convertFromSnakeCase turns "latency_avg_30s_ms" into "latencyAvg30SMs" (capital S),
+    // so that one key needs an explicit mapping.
+    enum CodingKeys: String, CodingKey {
+        case ts, state, online, dishReachable, downSince, error
+        case latencyAvg30sMs = "latencyAvg30SMs"
+        case latencyMs, dropRate, downBps, upBps, obstructionFraction, currentlyObstructed
+        case alerts, uptimeS, device, lastSpeedtest
+    }
 }
 
 struct History: Decodable {

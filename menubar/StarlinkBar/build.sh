@@ -14,13 +14,14 @@ rm -rf "$APP" build/obj
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" build/obj
 
 for ARCH in arm64 x86_64; do
-  xcrun swiftc -O -parse-as-library -swift-version 5 \
+  xcrun swiftc -O -swift-version 5 \
     -target "$ARCH-apple-macosx13.0" \
     -o "build/obj/StarlinkBar-$ARCH" Sources/*.swift
 done
 lipo -create -output "$BIN" build/obj/StarlinkBar-arm64 build/obj/StarlinkBar-x86_64
 
 cp Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # Ad-hoc signature. For downloads without the Gatekeeper warning, sign with a
 # Developer ID and notarize (see README).
 codesign --force --sign - "$APP" >/dev/null

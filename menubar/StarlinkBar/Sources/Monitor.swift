@@ -122,6 +122,12 @@ final class Monitor: ObservableObject {
         refreshAll()
     }
 
+    /// Polls everything right away; returns when done (for the popup's refresh button).
+    func refreshNow() async {
+        await pollNow()
+        await pollHistory()
+    }
+
     func refreshAll() {
         Task {
             await pollNow()

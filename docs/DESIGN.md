@@ -140,10 +140,16 @@ Built for old smart-TV browsers:
 
 ## 6. Menu bar app (`menubar/StarlinkBar/`)
 
-SwiftUI `MenuBarExtra` (macOS 13+), no Dock icon (`LSUIElement`). Built with `swiftc` directly; no Xcode project.
+Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swiftc` directly (`build.sh`, universal); no Xcode project, no dependencies. Same structure and look as the author's other menu bar apps (EFStatus, AsanaStatus):
 
-- **Bar:** satellite icon colored by state, plus latency or download (configurable).
-- **Panel:** state and dish uptime; latency, packet loss, download, upload; 15-minute sparklines (Swift Charts); obstruction and alerts; today's outages.
+- `StatusBarController` owns the `NSStatusItem`: left click toggles the popup, right click opens the menu (Refresh Now, Open TV Dashboard in collector mode, Settings…, About, Check for Updates, Quit). The popup closes on any click outside it and when displays change.
+- `PopupPanel` is a borderless `NSPanel` with a hand-drawn dark card (always dark, 260 pt wide): small uppercase section labels, a big number, a hand-drawn latency sparkline, DOWNLOAD / UPLOAD / LOSS columns, and today's outages as rows.
+- `SettingsWindow` and `AboutWindow` are regular windows; settings apply immediately.
+- `Monitor` + `DishClient` are the data layer (no UI code).
+
+- **Bar:** the dish glyph (`tools/dish.svg`, drawn by `DishShape.swift`) as a template image, plus latency or download (configurable), or "offline" during an outage. Dimmed when there's nothing to monitor.
+- **App icon:** diagonal blue gradient rounded square with the white dish; regenerate with `tools/make-icon.sh` (writes `appicon.png` and `Resources/AppIcon.icns`).
+- **Debug:** `StarlinkBar --snapshot out.png [-snapshotDelay N] [-snapshotWindows YES]` renders the popup (and the Settings/About windows) to PNG and quits.
 - **Notifications:** outage longer than 10 s ("Starlink offline"), recovery with the outage duration, optional high latency for 5 minutes.
 - **Data source:** the dish directly (default; status every 2 s, history every 30 s) or a collector URL (adds the TV dashboard link and speed tests).
 - **Settings:** bar text, notifications, open at login (`SMAppService`), data source and addresses.
