@@ -184,7 +184,7 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func openDashboard() {
-        NSWorkspace.shared.open(monitor.collectorURL.appendingPathComponent("tv/"))
+        NSWorkspace.shared.open(monitor.collectorURL.appendingPathComponent("sl-dashboard/"))
     }
 
     @objc private func openUpdates() {

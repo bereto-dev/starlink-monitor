@@ -110,9 +110,9 @@ Python 3, standard library only.
 | `GET /api/now` | `state`, `online`, `dish_reachable`, `down_since`, latency, drop, down/up, obstruction, alerts, uptime, device |
 | `GET /api/history?range=15m\|1h\|24h\|7d` | Columns `t[]`, `latency_ms[]`, `drop_rate[]`, `down_bps[]`, `up_bps[]` (1 / 5 / 60 / 600 s buckets) |
 | `GET /api/outages?since=<unix>&min_s=<s>` | `count`, `total_s`, `items[]` (default: since local midnight) |
-| `GET /tv/` | TV dashboard |
+| `GET /sl-dashboard/` | Dashboard (`/` redirects here) |
 
-**Running at login:** `collector/install-agent.sh` installs a launchd agent (`RunAtLoad` + `KeepAlive`). launchd jobs can't read `~/Desktop` or `~/Documents`, so the script copies `collector/` and `tv/` to `~/Library/Application Support/StarlinkMonitor/app/` and the agent runs that copy; re-run it after changing the code.
+**Running at login:** `collector/install-agent.sh` installs a launchd agent (`RunAtLoad` + `KeepAlive`). launchd jobs can't read `~/Desktop` or `~/Documents`, so the script copies `collector/` and `sl-dashboard/` to `~/Library/Application Support/StarlinkMonitor/app/` and the agent runs that copy; re-run it after changing the code.
 
 ```bash
 collector/install-agent.sh                                              # install / update + restart
@@ -125,7 +125,7 @@ The Mac must stay awake for the collector to keep recording.
 
 ---
 
-## 5. TV dashboard (`tv/`)
+## 5. Dashboard (`sl-dashboard/`)
 
 Built for old smart-TV browsers:
 

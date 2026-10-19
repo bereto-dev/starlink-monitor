@@ -6,7 +6,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-TV_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "tv"))
+DASHBOARD_PATH = "/sl-dashboard/"
+DASHBOARD_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "sl-dashboard"))
 
 
 def local_midnight(now=None):
@@ -52,17 +53,17 @@ def make_server(state, store, host="0.0.0.0", port=8766):
                 if p == "/api/outages":
                     since = float(q["since"]) if q.get("since") else local_midnight()
                     return self._json(store.outages(since, float(q.get("min_s", 0))))
-                if p in ("/", "/tv"):
-                    return self._send(302, b"", "text/plain", {"Location": "/tv/"})
-                if p.startswith("/tv/"):
-                    return self._static(p[len("/tv/"):] or "index.html")
+                if p in ("/", DASHBOARD_PATH.rstrip("/")):
+                    return self._send(302, b"", "text/plain", {"Location": DASHBOARD_PATH})
+                if p.startswith(DASHBOARD_PATH):
+                    return self._static(p[len(DASHBOARD_PATH):] or "index.html")
                 return self._json({"error": "not found"}, 404)
             except (ValueError, KeyError) as e:
                 return self._json({"error": str(e)}, 400)
 
         def _static(self, rel):
-            path = os.path.realpath(os.path.join(TV_DIR, rel))
-            if not path.startswith(TV_DIR + os.sep) or not os.path.isfile(path):
+            path = os.path.realpath(os.path.join(DASHBOARD_DIR, rel))
+            if not path.startswith(DASHBOARD_DIR + os.sep) or not os.path.isfile(path):
                 return self._json({"error": "not found"}, 404)
             ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
             if ctype.startswith("text/") or ctype.endswith("javascript"):

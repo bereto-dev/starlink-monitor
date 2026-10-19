@@ -182,7 +182,7 @@ def main():
         threading.Thread(target=target, args=a, daemon=True).start()
 
     srv = make_server(state, store, args.host, args.port)
-    print("Collector on http://%s:%d  (TV: /tv/)  db=%s" % (args.host, args.port, args.db), flush=True)
+    print("Collector on http://%s:%d  (dashboard: /sl-dashboard/)  db=%s" % (args.host, args.port, args.db), flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

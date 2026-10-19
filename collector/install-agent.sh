@@ -2,7 +2,7 @@
 # Installs (or updates) the collector as a launchd agent for the current user.
 #
 # launchd jobs can't read ~/Desktop or ~/Documents (macOS privacy protection), so
-# the collector and the TV dashboard are copied to
+# the collector and the dashboard are copied to
 # ~/Library/Application Support/StarlinkMonitor/app and the agent runs that copy.
 # Re-run this script after changing the code.
 #
@@ -26,9 +26,10 @@ if [[ "${1:-}" == "--remove" ]]; then
   exit 0
 fi
 
-mkdir -p "$APP/collector" "$APP/tv" "$(dirname "$LOG")" "$(dirname "$PLIST")"
+mkdir -p "$APP/collector" "$APP/sl-dashboard" "$(dirname "$LOG")" "$(dirname "$PLIST")"
 rsync -a --delete --exclude '__pycache__' --exclude '*.sh' "$SRC/collector/" "$APP/collector/"
-rsync -a --delete "$SRC/tv/" "$APP/tv/"
+rsync -a --delete "$SRC/sl-dashboard/" "$APP/sl-dashboard/"
+rm -rf "$APP/tv"  # older installs used tv/
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

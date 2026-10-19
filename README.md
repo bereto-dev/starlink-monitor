@@ -33,7 +33,7 @@ python3 collector/main.py        # Python 3, standard library only
 collector/install-agent.sh       # or run it at login as a launchd agent
 ```
 
-Then open `http://<mac-ip>:8766/tv/`. The dashboard is plain ES5, so it also runs on old smart-TV browsers. StarlinkBar can read from the collector instead of the dish (Settings › Data source).
+Then open `http://<mac-ip>:8766/sl-dashboard/`. The dashboard is plain ES5, so it also runs on old smart-TV browsers. StarlinkBar can read from the collector instead of the dish (Settings › Data source).
 
 API: `/api/now`, `/api/history?range=15m|1h|24h|7d`, `/api/outages?since=&min_s=`.
 
