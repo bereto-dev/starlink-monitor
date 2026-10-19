@@ -5,7 +5,7 @@ import UserNotifications
 /// Polls the dish directly (default) or a collector, and fires outage notifications.
 @MainActor
 final class Monitor: ObservableObject {
-    enum Status { case ok, degraded, down, unreachable, starting }
+    enum Status { case ok, degraded, down, notOnStarlink, unreachable, starting }
     enum Source: String { case dish, collector }
 
     @Published private(set) var now: NowStatus?
@@ -13,6 +13,7 @@ final class Monitor: ObservableObject {
     @Published private(set) var download: [Point] = []
     @Published private(set) var outages: Outages?
     @Published private(set) var reachable = true   // dish or collector answering
+    @Published private(set) var offStarlink = false // dish silent but internet works: another network
 
     static let nowEvery: TimeInterval = 2
     static let historyEvery: TimeInterval = 30
@@ -20,6 +21,8 @@ final class Monitor: ObservableObject {
     static let outageNotifyAfter: TimeInterval = 10
     static let highLatencyMs = 80.0
     static let highLatencyNotifyAfter: TimeInterval = 5 * 60
+    static let reprobeOffStarlinkEvery: TimeInterval = 15
+    static let internetProbeURL = URL(string: "https://www.apple.com/library/test/success.html")!
 
     static let defaultDishHost = "192.168.100.1"
     static let defaultCollectorURL = "http://localhost:8766"
@@ -28,6 +31,8 @@ final class Monitor: ObservableObject {
     private var rules = StateRules()
     private var lastOk: Date?
     private var generation = 0   // bumps on source change so stale responses are dropped
+    private var nowInFlight = false
+    private var lastProbe: (date: Date, online: Bool)?
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -60,6 +65,7 @@ final class Monitor: ObservableObject {
     }
 
     var status: Status {
+        if source == .dish && offStarlink { return .notOnStarlink }
         if !reachable && (source == .collector || lastOk == nil) { return .unreachable }
         guard let now else { return .starting }
         switch now.state {
@@ -95,6 +101,8 @@ final class Monitor: ObservableObject {
         download = []
         outages = nil
         reachable = true
+        offStarlink = false
+        lastProbe = nil
         lastOk = nil
         rules = StateRules()
         outageStart = nil
@@ -112,17 +120,44 @@ final class Monitor: ObservableObject {
     // MARK: - Polling
 
     private func pollNow() async {
+        guard !nowInFlight else { return }  // off Starlink a dish request can take the full timeout
+        nowInFlight = true
+        defer { nowInFlight = false }
         let gen = generation
         switch source {
         case .dish:
-            let s = try? await DishClient(host: dishHost).status()
+            if let s = try? await DishClient(host: dishHost).status() {
+                guard gen == generation else { return }
+                if offStarlink {  // back on Starlink: start fresh
+                    offStarlink = false
+                    forgetOutageState()
+                    Task { await pollHistory() }
+                }
+                rules.update(s)
+                lastOk = Date()
+                reachable = true
+                apply(rules.snapshot(s))
+                return
+            }
+            // The dish didn't answer. If the internet still works, this Mac is on another network,
+            // not in a Starlink outage (during an outage the internet goes through Starlink too).
+            let online = await internetReachable()
             guard gen == generation else { return }
-            rules.update(s)
-            if s != nil { lastOk = Date() }
-            reachable = s != nil || (lastOk.map { Date().timeIntervalSince($0) < Self.unreachableAfter } ?? false)
-            // Before the dish has ever answered, don't report outages: we may simply not be on Starlink.
+            if online {
+                if !offStarlink {
+                    offStarlink = true
+                    forgetOutageState()
+                    lastOk = nil  // whatever happens next is not about this dish until it answers again
+                }
+                reachable = false
+                return
+            }
+            offStarlink = false
+            rules.update(nil)
+            reachable = lastOk.map { Date().timeIntervalSince($0) < Self.unreachableAfter } ?? false
+            // Without a recent answer from the dish we can't tell a Starlink outage from no network at all.
             guard lastOk != nil else { return }
-            apply(rules.snapshot(s))
+            apply(rules.snapshot(nil))
         case .collector:
             do {
                 let n: NowStatus = try await getJSON("/api/now")
@@ -138,6 +173,29 @@ final class Monitor: ObservableObject {
         }
     }
 
+    private func forgetOutageState() {
+        rules = StateRules()
+        outageStart = nil
+        outageNotified = false
+        highLatencySince = nil
+        highLatencyNotified = false
+    }
+
+    /// Whether this Mac can reach the internet right now (cached while off Starlink).
+    private func internetReachable() async -> Bool {
+        if offStarlink, let p = lastProbe, Date().timeIntervalSince(p.date) < Self.reprobeOffStarlinkEvery {
+            return p.online
+        }
+        var req = URLRequest(url: Self.internetProbeURL, cachePolicy: .reloadIgnoringLocalCacheData)
+        req.timeoutInterval = 4
+        var online = false
+        if let (data, resp) = try? await session.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 {
+            online = String(decoding: data, as: UTF8.self).contains("Success")
+        }
+        lastProbe = (Date(), online)
+        return online
+    }
+
     private func apply(_ n: NowStatus) {
         now = n
         if n.dishReachable, let lat = n.latencyMs {
@@ -150,6 +208,7 @@ final class Monitor: ObservableObject {
         let gen = generation
         switch source {
         case .dish:
+            if offStarlink { return }  // resumes as soon as the dish answers again
             guard let h = try? await DishClient(host: dishHost).history(), gen == generation else { return }
             let fetched = Date()
             var lat: [Point] = [], down: [Point] = []

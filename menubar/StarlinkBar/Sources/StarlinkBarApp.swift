@@ -37,7 +37,7 @@ struct StarlinkBarApp: App {
     }
 
     private var barText: String? {
-        guard monitor.status != .unreachable, let n = monitor.now else { return nil }
+        guard ![.unreachable, .notOnStarlink].contains(monitor.status), let n = monitor.now else { return nil }
         if monitor.status == .down { return "offline" }
         switch barDisplay {
         case "latency": return n.latencyMs.map { "\(Int($0.rounded())) ms" }
@@ -55,7 +55,7 @@ extension Monitor.Status {
         case .ok: return .systemGreen
         case .degraded: return .systemOrange
         case .down: return .systemRed
-        case .unreachable, .starting: return .systemGray
+        case .notOnStarlink, .unreachable, .starting: return .systemGray
         }
     }
 
@@ -64,6 +64,7 @@ extension Monitor.Status {
         case .ok: return "Connected"
         case .degraded: return "Degraded"
         case .down: return "No internet"
+        case .notOnStarlink: return "Not on Starlink"
         case .unreachable: return "Not connected"
         case .starting: return "Connecting…"
         }
@@ -97,7 +98,9 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            if monitor.status == .unreachable {
+            if monitor.status == .notOnStarlink {
+                notOnStarlink
+            } else if monitor.status == .unreachable {
                 unreachable
             } else {
                 metrics
@@ -129,11 +132,20 @@ struct PanelView: View {
         }
     }
 
+    private var notOnStarlink: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("You're online through another network.").font(.callout)
+            Text("The Starlink dish at \(monitor.dishHost) isn't reachable from here, so there's nothing to monitor. StarlinkBar picks up again on its own when this Mac is back on Starlink. No outage alerts in the meantime.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     @ViewBuilder private var unreachable: some View {
         VStack(alignment: .leading, spacing: 6) {
             if monitor.source == .dish {
-                Text("Can't reach the Starlink dish at \(monitor.dishHost).").font(.callout)
-                Text("Make sure this Mac is on the Starlink network. If macOS asked for Local Network access, allow it in System Settings › Privacy & Security › Local Network.")
+                Text("No internet, and the Starlink dish at \(monitor.dishHost) isn't answering.").font(.callout)
+                Text("Check that this Mac is connected to a network. If you are on Starlink and macOS asked for Local Network access, allow it in System Settings › Privacy & Security › Local Network.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
