@@ -2,32 +2,32 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleIdentifier</key>
-	<string>io.github.bereto-dev.starlinkbar</string>
-	<key>CFBundleName</key>
-	<string>StarlinkBar</string>
 	<key>CFBundleDisplayName</key>
 	<string>StarlinkBar</string>
 	<key>CFBundleExecutable</key>
 	<string>StarlinkBar</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.bereto-dev.starlinkbar</string>
+	<key>CFBundleName</key>
+	<string>StarlinkBar</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.1.1</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>StarlinkBar reads status and history from your Starlink dish on the local network.</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>MIT License</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSHumanReadableCopyright</key>
+	<string>MIT License</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>StarlinkBar reads status and history from your Starlink dish on the local network.</string>
 </dict>
 </plist>
