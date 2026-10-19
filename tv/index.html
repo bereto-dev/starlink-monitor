@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920">
+<title>Starlink</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <div id="shift">
+
+    <div id="bar" class="bar st-wait">
+      <div class="bar-l"><span class="dot">&#9679;</span> <span id="state">CONNECTING…</span></div>
+      <div class="bar-r" id="clock">--</div>
+    </div>
+
+    <div class="row tiles">
+      <div class="tile"><div class="big"><span id="lat">--</span><small> ms</small></div><div class="lbl">latency</div></div>
+      <div class="tile"><div class="big"><span id="down">--</span><small> Mbps</small></div><div class="lbl">download (usage)</div></div>
+      <div class="tile"><div class="big"><span id="up">--</span><small> Mbps</small></div><div class="lbl">upload (usage)</div></div>
+      <div class="tile last"><div class="big"><span id="obs">--</span><small> %</small></div><div class="lbl" id="obslbl">obstructed</div></div>
+    </div>
+
+    <div class="chartbox">
+      <div class="chart-h">
+        <span class="t">Last 15 min</span>
+        <span class="key"><span class="sw sw-lat"></span>latency (ms)</span>
+        <span class="key"><span class="sw sw-down"></span>download (Mbps)</span>
+      </div>
+      <canvas id="chart" width="1840" height="340"></canvas>
+    </div>
+
+    <div class="row bottom">
+      <div class="cell outages">
+        <div class="h" id="outsum">Outages today: --</div>
+        <div id="outlist"></div>
+      </div>
+      <div class="cell info">
+        <div class="h">Last speed test</div>
+        <div id="speed" class="line">--</div>
+        <div id="uptime" class="line">--</div>
+        <div id="dev" class="foot">--</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="down-overlay" class="overlay" style="display:none">
+    <div class="ov-in">
+      <div class="ov-big">NO INTERNET</div>
+      <div class="ov-timer" id="downtimer">0:00</div>
+      <div class="ov-sub" id="downsub"></div>
+    </div>
+  </div>
+
+  <div id="stale-overlay" class="overlay stale" style="display:none">
+    <div class="ov-in">
+      <div class="ov-big">COLLECTOR NOT RESPONDING</div>
+      <div class="ov-sub">The Mac is not answering on :8766. Is it asleep or off?</div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

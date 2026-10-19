@@ -1,0 +1,38 @@
+name: Release StarlinkBar
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${GITHUB_REF_NAME#v}" menubar/StarlinkBar/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" menubar/StarlinkBar/Info.plist
+
+      - name: Build universal app
+        run: menubar/StarlinkBar/build.sh --zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarlinkBar
+          path: menubar/StarlinkBar/dist/*.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" menubar/StarlinkBar/dist/*.zip \
+            --title "StarlinkBar $GITHUB_REF_NAME" \
+            --notes "Download **StarlinkBar-${GITHUB_REF_NAME#v}.zip**, unzip it and move StarlinkBar.app to Applications. The app is not notarized: the first time, right-click it and choose **Open** (or allow it in System Settings › Privacy & Security). Requires macOS 13 or later."

@@ -1,0 +1,110 @@
+import Foundation
+
+// Mirrors the collector's JSON API (snake_case keys are converted by the decoder).
+
+struct NowStatus: Decodable {
+    struct Device: Decodable {
+        let id: String?
+        let hardware: String?
+        let software: String?
+        let country: String?
+    }
+
+    struct SpeedTest: Decodable {
+        let ts: Double
+        let downMbps: Double?
+        let upMbps: Double?
+    }
+
+    let ts: Double
+    let state: String           // ok / degraded / down
+    let online: Bool
+    let dishReachable: Bool
+    let downSince: Double?
+    let error: String?
+    let latencyAvg30sMs: Double?
+    let latencyMs: Double?
+    let dropRate: Double?
+    let downBps: Double?
+    let upBps: Double?
+    let obstructionFraction: Double?
+    let currentlyObstructed: Bool?
+    let alerts: [String]?
+    let uptimeS: Double?
+    let device: Device?
+    let lastSpeedtest: SpeedTest?
+}
+
+struct History: Decodable {
+    let t: [Double]
+    let latencyMs: [Double?]
+    let downBps: [Double?]
+}
+
+struct Outages: Decodable {
+    struct Item: Decodable, Identifiable {
+        let startTs: Double
+        let durationS: Double
+        let cause: String
+        var id: Double { startTs }
+    }
+
+    let count: Int
+    let totalS: Double
+    let items: [Item]
+}
+
+struct Point: Identifiable {
+    let date: Date
+    let value: Double
+    var id: Date { date }
+}
+
+enum Labels {
+    static let causes: [String: String] = [
+        "unknown": "unknown", "booting": "booting", "stowed": "stowed",
+        "thermal_shutdown": "thermal shutdown", "no_schedule": "no schedule",
+        "no_sats": "no satellites", "obstructed": "obstructed", "no_downlink": "no downlink",
+        "no_pings": "no network response", "actively_hunting": "searching for satellite",
+        "dish_unreachable": "dish unreachable",
+    ]
+
+    static let alerts: [String: String] = [
+        "motors_stuck": "Motors stuck", "thermal_shutdown": "Thermal shutdown",
+        "thermal_throttle": "Thermal throttling", "unexpected_location": "Unexpected location",
+        "mast_not_near_vertical": "Mast not vertical", "slow_ethernet_speeds": "Slow ethernet",
+        "roaming": "Roaming", "install_pending": "Update pending", "is_heating": "Melting snow",
+        "power_supply_thermal_throttle": "Power supply hot", "is_power_save_idle": "Power save",
+        "moving_while_not_mobile": "Moving", "dbf_telem_stale": "Stale telemetry",
+    ]
+}
+
+enum Fmt {
+    static func mbps(_ bps: Double?) -> String {
+        guard let bps else { return "--" }
+        let m = bps / 1e6
+        return m >= 100 ? String(format: "%.0f", m) : m >= 10 ? String(format: "%.1f", m) : String(format: "%.2f", m)
+    }
+
+    static func ago(_ s: Double) -> String {
+        let s = max(0, Int(s))
+        let d = s / 86400, h = (s % 86400) / 3600, m = (s % 3600) / 60
+        if d > 0 { return "\(d) d \(h) h" }
+        if h > 0 { return "\(h) h \(m) min" }
+        return "\(m) min"
+    }
+
+    static func duration(_ s: Double) -> String {
+        if s < 10 { return String(format: "%.1f s", s) }
+        if s < 60 { return "\(Int(s.rounded())) s" }
+        let m = Int(s) / 60
+        if m < 60 { return "\(m) min \(Int(s) % 60) s" }
+        return "\(m / 60) h \(m % 60) min"
+    }
+
+    static func clock(_ ts: Double) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: Date(timeIntervalSince1970: ts))
+    }
+}
