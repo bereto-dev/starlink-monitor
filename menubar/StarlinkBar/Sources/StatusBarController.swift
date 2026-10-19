@@ -160,7 +160,7 @@ final class StatusBarController: NSObject {
         let menu = NSMenu()
         menu.addItem(item("Refresh Now", #selector(refreshNow), "r"))
         if monitor.source == .collector {
-            menu.addItem(item("Open TV Dashboard", #selector(openDashboard), ""))
+            menu.addItem(item("Open Starlink Dashboard", #selector(openDashboard), ""))
         }
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(showSettings), ","))

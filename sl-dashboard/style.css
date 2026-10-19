@@ -1,4 +1,4 @@
-/* Old TV browser: no CSS variables, no grid or gap. Designed at 1920x1080. */
+/* Works on old smart-TV browsers: no CSS variables, no grid or gap. Designed at 1920x1080. */
 html, body {
   margin: 0;
   padding: 0;

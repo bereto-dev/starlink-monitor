@@ -143,7 +143,7 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
             addressLabel.stringValue = "Collector URL"
             addressField.placeholderString = Monitor.defaultCollectorURL
             addressField.stringValue = defaults.string(forKey: "collectorURL") ?? Monitor.defaultCollectorURL
-            sourceHelp.stringValue = "Reads from the optional Python collector, which keeps long-term history and serves the TV dashboard."
+            sourceHelp.stringValue = "Reads from the optional Python collector, which keeps long-term history and serves the Starlink Dashboard."
         }
     }
 

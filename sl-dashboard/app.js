@@ -1,4 +1,4 @@
-/* Starlink dashboard for old smart-TV browsers. Pure ES5: var, function, XMLHttpRequest. */
+/* Starlink Dashboard. Runs on old smart-TV browsers too (pure ES5: var, function, XMLHttpRequest). */
 (function () {
   'use strict';
 
@@ -33,7 +33,7 @@
   var series = { t: [], lat: [], down: [] };
   var last = null;          // latest /api/now
   var lastOkMs = 0;         // local time of the last response
-  var skewS = 0;            // server clock - TV clock
+  var skewS = 0;            // server clock - browser clock
   var shiftIdx = 0;
 
   // ---------- helpers ----------

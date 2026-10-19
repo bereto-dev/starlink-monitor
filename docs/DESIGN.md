@@ -1,15 +1,15 @@
 # Design notes
 
-Technical reference for the dish API, the collector, the TV dashboard and the menu bar app.
+Technical reference for the dish API, the collector, the Starlink Dashboard and the menu bar app.
 
 ```
  Starlink dish ──gRPC-web──▶  StarlinkBar (menu bar app)            standalone
  192.168.100.1:9201     │
-                        └──▶  Collector (Python)  ──HTTP :8766──▶  TV dashboard / any browser
+                        └──▶  Collector (Python)  ──HTTP :8766──▶  Starlink Dashboard (any browser)
                               SQLite + JSON API              └──▶  StarlinkBar (collector mode)
 ```
 
-The menu bar app reads the dish directly by default. The collector is optional: it keeps long-term history in SQLite and serves the TV dashboard.
+The menu bar app reads the dish directly by default. The collector is optional: it keeps long-term history in SQLite and serves the Starlink Dashboard.
 
 ---
 
@@ -83,7 +83,7 @@ Field numbers can change with a firmware update; the mapping lives in one place 
 
 ## 3. State rules
 
-Shared by the collector, the TV dashboard and the menu bar app:
+Shared by the collector, the Starlink Dashboard and the menu bar app:
 
 - `down`: the dish does not respond, or `drop_rate ≥ 0.5` for more than 5 s.
 - `degraded`: 30 s average latency > 80 ms, or `drop_rate > 0.02`, or currently obstructed.
@@ -127,7 +127,7 @@ The Mac must stay awake for the collector to keep recording.
 
 ## 5. Dashboard (`sl-dashboard/`)
 
-Built for old smart-TV browsers:
+A full-screen web page, built to also run on old smart-TV browsers:
 
 - **Pure ES5**: `var`, `function`, `XMLHttpRequest`; no `let`, `const`, `fetch`, Promises, arrow functions or template strings.
 - **CSS without variables**, `display: table`, no `grid` or `gap`; system fonts only.
@@ -142,7 +142,7 @@ Built for old smart-TV browsers:
 
 Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swiftc` directly (`build.sh`, universal); no Xcode project, no dependencies. Same structure and look as the author's other menu bar apps (EFStatus, AsanaStatus):
 
-- `StatusBarController` owns the `NSStatusItem`: left click toggles the popup, right click opens the menu (Refresh Now, Open TV Dashboard in collector mode, Settings…, About, Check for Updates, Quit). The popup closes on any click outside it and when displays change.
+- `StatusBarController` owns the `NSStatusItem`: left click toggles the popup, right click opens the menu (Refresh Now, Open Starlink Dashboard in collector mode, Settings…, About, Check for Updates, Quit). The popup closes on any click outside it and when displays change.
 - `PopupPanel` is a borderless `NSPanel` with a hand-drawn dark card (always dark, 260 pt wide): small uppercase section labels, a big number, a hand-drawn latency sparkline, DOWNLOAD / UPLOAD / LOSS columns, and today's outages as rows.
 - `SettingsWindow` and `AboutWindow` are regular windows; settings apply immediately.
 - `Monitor` + `DishClient` are the data layer (no UI code).
@@ -151,7 +151,7 @@ Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swif
 - **App icon:** diagonal blue gradient rounded square with the white dish; regenerate with `tools/make-icon.sh` (writes `appicon.png` and `Resources/AppIcon.icns`).
 - **Debug:** `StarlinkBar --snapshot out.png [-snapshotDelay N] [-snapshotWindows YES]` renders the popup (and the Settings/About windows) to PNG and quits.
 - **Notifications:** outage longer than 10 s ("Starlink offline"), recovery with the outage duration, optional high latency for 5 minutes.
-- **Data source:** the dish directly (default; status every 2 s, history every 30 s) or a collector URL (adds the TV dashboard link and speed tests).
+- **Data source:** the dish directly (default; status every 2 s, history every 30 s) or a collector URL (adds the Starlink Dashboard link and speed tests).
 - **Settings:** bar text, notifications, open at login (`SMAppService`), data source and addresses.
 
 macOS asks for **Local Network** access the first time the app contacts the dish.

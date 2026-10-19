@@ -24,9 +24,9 @@ menubar/StarlinkBar/build.sh --zip    # universal build + dist/StarlinkBar-<vers
 
 Releases are built by GitHub Actions when a `v*` tag is pushed (`.github/workflows/release.yml`).
 
-## Collector + TV dashboard (optional)
+## Collector + Starlink Dashboard (optional)
 
-For long-term history and a full-screen dashboard on a TV or any browser in the house:
+For long-term history and the Starlink Dashboard, a full-screen view for any screen or browser in the house:
 
 ```bash
 python3 collector/main.py        # Python 3, standard library only

@@ -39,7 +39,7 @@ class State:
         self.last_ok_ts = None
         self.last_error = None
         self.bad_since = None      # start of the stretch with drop >= 0.5
-        self.down_since = None     # start of the current outage (for the TV counter)
+        self.down_since = None     # start of the current outage (for the dashboard counter)
         self.window = collections.deque()  # (ts, latency_ms)
         self.started = time.time()
 

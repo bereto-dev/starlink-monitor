@@ -1,4 +1,4 @@
-"""HTTP API + static files for the TV dashboard."""
+"""HTTP API + static files for the Starlink Dashboard."""
 import json
 import mimetypes
 import os
@@ -19,7 +19,7 @@ def make_server(state, store, host="0.0.0.0", port=8766):
     class Handler(BaseHTTPRequestHandler):
         server_version = "StarlinkMonitor/0.1"
 
-        def log_message(self, fmt, *args):  # quiet: the TV polls every 3 s
+        def log_message(self, fmt, *args):  # quiet: the dashboard polls every 3 s
             pass
 
         def _send(self, code, body, ctype, extra=None):
