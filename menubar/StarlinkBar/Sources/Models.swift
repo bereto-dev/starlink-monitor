@@ -95,13 +95,33 @@ enum Labels {
     ]
 
     static let alerts: [String: String] = [
-        "motors_stuck": "Motors stuck", "thermal_shutdown": "Thermal shutdown",
-        "thermal_throttle": "Thermal throttling", "unexpected_location": "Unexpected location",
-        "mast_not_near_vertical": "Mast not vertical", "slow_ethernet_speeds": "Slow ethernet",
-        "roaming": "Roaming", "install_pending": "Update pending", "is_heating": "Melting snow",
-        "power_supply_thermal_throttle": "Power supply hot", "is_power_save_idle": "Power save",
-        "moving_while_not_mobile": "Moving", "dbf_telem_stale": "Stale telemetry",
+        "motors_stuck": "Motors stuck",
+        "thermal_shutdown": "Thermal shutdown",
+        "thermal_throttle": "Thermal throttling",
+        "unexpected_location": "Unexpected location",
+        "mast_not_near_vertical": "Mast not vertical",
+        "slow_ethernet_speeds": "Slow Ethernet",
+        "install_pending": "Update pending",
+        "is_heating": "Melting snow",
+        "power_supply_thermal_throttle": "Power supply hot",
+        "is_power_save_idle": "Power save",
+        "dbf_telem_stale": "Stale telemetry",
+        "low_motor_current": "Low motor current",
+        "lower_signal_than_predicted": "Weaker signal than expected",
+        "slow_ethernet_speeds_100": "Ethernet at 100 Mbps",
+        "obstruction_map_reset": "Obstruction map reset",
+        "dish_water_detected": "Water in the dish",
+        "router_water_detected": "Water in the router",
+        "upsu_router_port_slow": "Slow router port",
+        "no_ethernet_link": "No Ethernet link",
     ]
+
+    /// Readable alert name; unknown ones (a newer firmware) read "Unknown alert (17)".
+    static func alert(_ name: String) -> String {
+        if let label = alerts[name] { return label }
+        if name.hasPrefix("alert_") { return "Unknown alert (\(name.dropFirst(6)))" }
+        return name.replacingOccurrences(of: "_", with: " ").capitalized
+    }
 }
 
 enum Fmt {

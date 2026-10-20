@@ -177,7 +177,7 @@ final class PopupPanel: NSPanel {
         statusLine.stringValue = parts.joined(separator: " · ")
         statusLine.isHidden = false
 
-        var alerts = (n?.alerts ?? []).map { Labels.alerts[$0] ?? $0 }
+        var alerts = (n?.alerts ?? []).map(Labels.alert)
         if n?.currentlyObstructed == true { alerts.insert("Obstructed now", at: 0) }
         alertLine.stringValue = alerts.joined(separator: " · ")
         alertLine.textColor = ORANGE

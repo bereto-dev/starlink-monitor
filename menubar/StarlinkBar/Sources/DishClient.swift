@@ -43,11 +43,14 @@ struct DishClient {
     private static let getHistory = 1007
     private static let gpsToUnix = 315_964_800.0 - 18  // GPS epoch minus current leap seconds
 
+    // DishAlerts fields, from the dish's own gRPC reflection (firmware 2026.09).
     private static let alertNames: [Int: String] = [
         1: "motors_stuck", 2: "thermal_shutdown", 3: "thermal_throttle", 4: "unexpected_location",
-        5: "mast_not_near_vertical", 6: "slow_ethernet_speeds", 7: "roaming", 8: "install_pending",
-        9: "is_heating", 10: "power_supply_thermal_throttle", 11: "is_power_save_idle",
-        12: "moving_while_not_mobile", 14: "dbf_telem_stale",
+        5: "mast_not_near_vertical", 6: "slow_ethernet_speeds", 8: "install_pending", 9: "is_heating",
+        10: "power_supply_thermal_throttle", 11: "is_power_save_idle", 14: "dbf_telem_stale",
+        16: "low_motor_current", 17: "lower_signal_than_predicted", 18: "slow_ethernet_speeds_100",
+        19: "obstruction_map_reset", 20: "dish_water_detected", 21: "router_water_detected",
+        22: "upsu_router_port_slow", 23: "no_ethernet_link",
     ]
     private static let causes: [UInt64: String] = [
         0: "unknown", 1: "booting", 2: "stowed", 3: "thermal_shutdown", 4: "no_schedule", 5: "no_sats",

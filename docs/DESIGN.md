@@ -77,6 +77,8 @@ The dish also exposes **gRPC reflection** (`grpcurl -plaintext 192.168.100.1:920
 
 Outage start → Unix seconds: `ns / 1e9 + 315964800 - 18` (GPS epoch minus current leap seconds).
 
+Alert names (field numbers inside `alerts`) come from the dish's own reflection: on firmware 2026.09, 17 is `lower_signal_than_predicted`, 18 `slow_ethernet_speeds_100`, 20 `dish_water_detected`, 23 `no_ethernet_link`, and so on (7 `roaming` and 12 `moving_while_not_mobile` no longer exist). Unknown numbers show as "Unknown alert (N)". The reflection service also answers over gRPC-web (`/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo` with `file_containing_symbol: "SpaceX.API.Device.DishAlerts"`), so the list can be refreshed with the standard library only.
+
 Field numbers can change with a firmware update; the mapping lives in one place per client (`collector/starlink.py`, `menubar/StarlinkBar/Sources/DishClient.swift`).
 
 ---

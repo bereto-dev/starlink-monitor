@@ -18,12 +18,25 @@
     dish_unreachable: 'dish unreachable'
   };
   var ALERTS = {
-    motors_stuck: 'motors stuck', thermal_shutdown: 'thermal shutdown',
-    thermal_throttle: 'thermal throttling', unexpected_location: 'unexpected location',
-    mast_not_near_vertical: 'mast not vertical', slow_ethernet_speeds: 'slow ethernet',
-    roaming: 'roaming', install_pending: 'update pending', is_heating: 'melting snow',
-    power_supply_thermal_throttle: 'power supply hot', is_power_save_idle: 'power save',
-    moving_while_not_mobile: 'moving', dbf_telem_stale: 'stale telemetry'
+    motors_stuck: 'motors stuck',
+    thermal_shutdown: 'thermal shutdown',
+    thermal_throttle: 'thermal throttling',
+    unexpected_location: 'unexpected location',
+    mast_not_near_vertical: 'mast not vertical',
+    slow_ethernet_speeds: 'slow Ethernet',
+    install_pending: 'update pending',
+    is_heating: 'melting snow',
+    power_supply_thermal_throttle: 'power supply hot',
+    is_power_save_idle: 'power save',
+    dbf_telem_stale: 'stale telemetry',
+    low_motor_current: 'low motor current',
+    lower_signal_than_predicted: 'weaker signal than expected',
+    slow_ethernet_speeds_100: 'Ethernet at 100 Mbps',
+    obstruction_map_reset: 'obstruction map reset',
+    dish_water_detected: 'water in the dish',
+    router_water_detected: 'water in the router',
+    upsu_router_port_slow: 'slow router port',
+    no_ethernet_link: 'no Ethernet link'
   };
   var STATES = { ok: 'CONNECTED', degraded: 'DEGRADED', down: 'NO INTERNET' };
 
@@ -68,6 +81,11 @@
   }
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function alertName(a) {
+    if (ALERTS[a]) return ALERTS[a];
+    if (a.indexOf('alert_') === 0) return 'unknown alert (' + a.substring(6) + ')';
+    return a.replace(/_/g, ' ');
   }
   function ago(s) {
     s = Math.max(0, Math.floor(s));
@@ -135,7 +153,7 @@
     if (n.currently_obstructed) alerts = ['obstructed now'].concat(alerts);
     if (alerts.length) {
       var names = [];
-      for (var i = 0; i < alerts.length; i++) names.push(ALERTS[alerts[i]] || alerts[i]);
+      for (var i = 0; i < alerts.length; i++) names.push(alertName(alerts[i]));
       setText('obslbl', esc(names.join(' · ')));
       lbl.className = 'lbl warn';
     } else {
