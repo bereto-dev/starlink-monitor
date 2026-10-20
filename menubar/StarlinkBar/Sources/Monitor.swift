@@ -17,7 +17,7 @@ final class Monitor: ObservableObject {
     @Published private(set) var offStarlink = false // dish silent but internet works: another network
     @Published private(set) var lastSeen: LastSeen? = Monitor.loadLastSeen()
     @Published private(set) var connection: String?        // current network, e.g. "Wi‑Fi"
-    @Published private(set) var internetLatencyMs: Double? // round trip of the internet check
+    @Published private(set) var network = NetworkStats.Snapshot() // stats of that network while off Starlink
 
     static let nowEvery: TimeInterval = 2
     static let historyEvery: TimeInterval = 30
@@ -25,8 +25,7 @@ final class Monitor: ObservableObject {
     static let outageNotifyAfter: TimeInterval = 10
     static let highLatencyMs = 80.0
     static let highLatencyNotifyAfter: TimeInterval = 5 * 60
-    static let reprobeOffStarlinkEvery: TimeInterval = 15
-    static let internetProbeURL = URL(string: "https://www.apple.com/library/test/success.html")!
+    static let dishRetryOffStarlink: TimeInterval = 10  // look for the dish again this often
 
     static let defaultDishHost = "192.168.100.1"
     static let defaultCollectorURL = "http://localhost:8766"
@@ -36,7 +35,10 @@ final class Monitor: ObservableObject {
     private var lastOk: Date?
     private var generation = 0   // bumps on source change so stale responses are dropped
     private var nowInFlight = false
-    private var lastProbe: (date: Date, online: Bool)?
+    private let net = NetworkStats()
+    private var interface: String?          // current interface, e.g. "en0"
+    private var offStarlinkInterface: String?
+    private var lastDishAttempt = Date.distantPast
     private var lastSeenSaved = Date.distantPast
     private let pathMonitor = NWPathMonitor()
     static let saveLastSeenEvery: TimeInterval = 30
@@ -86,7 +88,8 @@ final class Monitor: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let description = Monitor.describe(path)
-            Task { @MainActor in self?.networkChanged(description) }
+            let interface = path.availableInterfaces.first?.name
+            Task { @MainActor in self?.networkChanged(description, interface: interface) }
         }
         pathMonitor.start(queue: DispatchQueue(label: "StarlinkBar.path"))
         start()
@@ -114,7 +117,8 @@ final class Monitor: ObservableObject {
         outages = nil
         reachable = true
         offStarlink = false
-        lastProbe = nil
+        offStarlinkInterface = nil
+        lastDishAttempt = .distantPast
         lastOk = nil
         rules = StateRules()
         outageStart = nil
@@ -144,7 +148,17 @@ final class Monitor: ObservableObject {
         let gen = generation
         switch source {
         case .dish:
-            if let s = try? await DishClient(host: dishHost).status() {
+            // Off Starlink on the same network: keep measuring it, and only look for the dish now and then.
+            let sameNetwork = offStarlink && offStarlinkInterface == interface
+            if sameNetwork, Date().timeIntervalSince(lastDishAttempt) < Self.dishRetryOffStarlink {
+                await pollNetwork()
+                return
+            }
+            lastDishAttempt = Date()
+            // Off Starlink a dish request can take its full timeout: keep measuring the network meanwhile.
+            async let dish = try? DishClient(host: dishHost).status()
+            if sameNetwork { await pollNetwork() }
+            if let s = await dish {
                 guard gen == generation else { return }
                 if offStarlink {  // back on Starlink: start fresh
                     offStarlink = false
@@ -158,9 +172,11 @@ final class Monitor: ObservableObject {
                 rememberLastSeen()
                 return
             }
+            guard gen == generation else { return }
+            if sameNetwork { return }  // still on the other network (even if its internet is down now)
             // The dish didn't answer. If the internet still works, this Mac is on another network,
             // not in a Starlink outage (during an outage the internet goes through Starlink too).
-            let online = await internetReachable()
+            let online = await net.probe()
             guard gen == generation else { return }
             if online {
                 if !offStarlink {
@@ -168,7 +184,13 @@ final class Monitor: ObservableObject {
                     forgetOutageState()
                     lastOk = nil  // whatever happens next is not about this dish until it answers again
                 }
+                if offStarlinkInterface != interface {
+                    offStarlinkInterface = interface
+                    net.start(interface: interface, connection: connection)
+                    await net.probe()
+                }
                 reachable = false
+                network = net.snapshot
                 return
             }
             offStarlink = false
@@ -200,30 +222,15 @@ final class Monitor: ObservableObject {
         highLatencyNotified = false
     }
 
-    /// Whether this Mac can reach the internet right now (cached while off Starlink).
-    private func internetReachable() async -> Bool {
-        if offStarlink, let p = lastProbe, Date().timeIntervalSince(p.date) < Self.reprobeOffStarlinkEvery {
-            return p.online
-        }
-        var req = URLRequest(url: Self.internetProbeURL, cachePolicy: .reloadIgnoringLocalCacheData)
-        req.timeoutInterval = 4
-        var online = false
-        let metrics = MetricsCollector()
-        if let (data, resp) = try? await session.data(for: req, delegate: metrics),
-           (resp as? HTTPURLResponse)?.statusCode == 200 {
-            online = String(decoding: data, as: UTF8.self).contains("Success")
-        }
-        // Request -> first response byte, without DNS/TCP/TLS setup: close to a ping, not exact.
-        internetLatencyMs = online ? metrics.requestRoundTripMs : nil
-        lastProbe = (Date(), online)
-        return online
+    private func pollNetwork() async {
+        await net.poll()
+        network = net.snapshot
     }
 
-    // MARK: - Off-Starlink context
-
-    private func networkChanged(_ description: String?) {
+    private func networkChanged(_ description: String?, interface: String?) {
         connection = description
-        lastProbe = nil  // the old answer is about the previous network
+        self.interface = interface
+        lastDishAttempt = .distantPast  // a new network may be Starlink: look for the dish right away
         Task { await pollNow() }
     }
 
@@ -461,7 +468,7 @@ struct StateRules {
 }
 
 /// Collects the request/response timing of one URLSession task.
-private final class MetricsCollector: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class MetricsCollector: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private(set) var requestRoundTripMs: Double?
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {

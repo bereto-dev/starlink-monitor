@@ -149,7 +149,7 @@ Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swif
 - `SettingsWindow` and `AboutWindow` are regular windows; settings apply immediately.
 - `Monitor` + `DishClient` are the data layer (no UI code).
 
-- **Bar:** the dish glyph (`tools/dish.svg`, drawn by `DishShape.swift`) as a template image, plus latency or download (configurable), or "offline" during an outage. Dimmed when there's nothing to monitor.
+- **Bar:** the dish glyph (`tools/dish.svg`, drawn by `DishShape.swift`) as a template image on Starlink, an antenna on other networks, plus latency or download (configurable), or "offline" during an outage. Dimmed when there's no connection at all.
 - **App icon:** diagonal blue gradient rounded square with the white dish; regenerate with `tools/make-icon.sh` (writes `appicon.png` and `Resources/AppIcon.icns`).
 - **Debug:** `StarlinkBar --snapshot out.png [-snapshotDelay N] [-snapshotWindows YES]` renders the popup (and the Settings/About windows) to PNG and quits.
 - **Notifications:** outage longer than 10 s ("Starlink offline"), recovery with the outage duration, optional high latency for 5 minutes.
@@ -158,4 +158,16 @@ Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swif
 
 macOS asks for **Local Network** access the first time the app contacts the dish.
 
-**Off Starlink:** the dish only answers from a Starlink network. When it stops answering, the app checks whether the internet still works (HTTPS request to `www.apple.com/library/test/success.html`, re-checked every 15 s). If it does, the Mac is on another network: the app shows **Not on Starlink** (gray icon, no outage alerts) and resumes when the dish answers again. If the internet is down too, it's treated as an outage. While off Starlink the panel shows the current connection (Wi‑Fi, Ethernet, personal hotspot, Low Data Mode; from `NWPathMonitor`, no extra permissions), the internet check's request round trip (`URLSessionTaskMetrics`, excluding DNS/TLS setup) and the **last values seen on Starlink** (saved locally every 30 s, plus that day's outages). No SSID (it needs Location access), public IP lookups or automatic speed tests. Inside a Starlink network the internet goes through the dish, so a working internet with a silent dish can't be a Starlink outage.
+**Off Starlink:** the dish only answers from a Starlink network. When it stops answering, the app checks whether the internet still works (HTTPS request to `www.apple.com/library/test/success.html`). If it does, the Mac is on another network: no Starlink outage alerts, the menu bar switches to an antenna (`antenna.radiowaves.left.and.right`; a signal glyph would look like the system Wi‑Fi icon), and the same card measures **the current network** instead of the dish (`NetworkStats.swift`, no extra permissions):
+
+| Card | Starlink | Other network |
+|---|---|---|
+| Header | `STARLINK · CONNECTED` | `WI‑FI · CONNECTED` (connection type from `NWPathMonitor`: Wi‑Fi, Ethernet, personal hotspot, Low Data Mode) |
+| Big number, sparkline | Dish latency (1 s samples) | HTTPS check every 4 s; request round trip from `URLSessionTaskMetrics`, without DNS/TCP/TLS setup |
+| Status line | Dish uptime, obstruction | Time on this network |
+| Download / upload | Dish throughput (usage) | Interface byte counters from `getifaddrs` (usage) |
+| Loss | Dish ping drop rate | Share of failed checks in the last 60 s |
+| Outages today | Dish outage history | Checks failing for 2 s or more, while the app runs |
+| Footer | Last update | Last values seen on Starlink (saved locally every 30 s) |
+
+The same state rules apply (down after 5 s without internet; degraded over 80 ms average or 2 % loss). While off Starlink the app looks for the dish every 10 s, and right away when the network changes. If the internet is down too and the dish is silent, it can't tell a Starlink outage from no network at all, so it shows "Not connected". Inside a Starlink network the internet goes through the dish, so a working internet with a silent dish can't be a Starlink outage. No SSID (it needs Location access), public IP lookups or speed tests.

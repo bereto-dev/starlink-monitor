@@ -43,9 +43,19 @@ final class StatusBarController: NSObject {
         render()
     }
 
-    private static func statusBarIcon() -> NSImage? {
-        DishShape.menuBarImage()
-    }
+    /// The dish while monitoring Starlink.
+    private static let dishIcon = DishShape.menuBarImage()
+
+    /// An antenna while the Mac is on another network (not a signal glyph: it would look like the system Wi‑Fi icon).
+    private static let genericIcon: NSImage? = {
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let img = NSImage(systemSymbolName: "antenna.radiowaves.left.and.right", accessibilityDescription: "Network")?
+            .withSymbolConfiguration(config)
+        img?.isTemplate = true
+        return img
+    }()
+
+    private static func statusBarIcon() -> NSImage? { dishIcon }
 
     // MARK: - Rendering
 
@@ -68,14 +78,28 @@ final class StatusBarController: NSObject {
     private func updateStatusItem() {
         guard let btn = statusItem.button else { return }
         let status = monitor.status
-        // Dimmed icon when there's nothing to monitor (off Starlink, or no connection at all).
-        btn.appearsDisabled = [.notOnStarlink, .unreachable, .starting].contains(status)
+        let offStarlink = status == .notOnStarlink
+        let icon = offStarlink ? (Self.genericIcon ?? Self.dishIcon) : Self.dishIcon
+        if btn.image !== icon { btn.image = icon }
+        // Dimmed icon when there's nothing to measure (no connection at all, or still starting).
+        btn.appearsDisabled = [.unreachable, .starting].contains(status)
 
+        let display = UserDefaults.standard.string(forKey: "barDisplay") ?? "latency"
         var text = ""
-        if status == .down {
+        if offStarlink {
+            // The same readout, for the network the Mac is on.
+            let n = monitor.network
+            if n.state == "down" {
+                text = "offline"
+            } else if display == "latency" {
+                text = n.latencyMs.map { "\(Int($0.rounded())) ms" } ?? ""
+            } else if display == "download" {
+                text = n.downBps.map { "\(Fmt.mbps($0)) Mbps" } ?? ""
+            }
+        } else if status == .down {
             text = "offline"
         } else if [.ok, .degraded].contains(status), let n = monitor.now {
-            switch UserDefaults.standard.string(forKey: "barDisplay") ?? "latency" {
+            switch display {
             case "latency": text = n.latencyMs.map { "\(Int($0.rounded())) ms" } ?? ""
             case "download": text = "\(Fmt.mbps(n.downBps)) Mbps"
             default: text = ""

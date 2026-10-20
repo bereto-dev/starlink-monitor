@@ -143,8 +143,8 @@ final class PopupPanel: NSPanel {
         resize()
     }
 
-    private func setHeader(_ text: String, dot: NSColor?) {
-        headerLabel.stringValue = "STARLINK · " + text
+    private func setHeader(_ text: String, dot: NSColor?, prefix: Bool = true) {
+        headerLabel.stringValue = prefix ? "STARLINK · " + text : text
         dotLabel.textColor = dot ?? NSColor.white.withAlphaComponent(0.35)
     }
 
@@ -168,6 +168,7 @@ final class PopupPanel: NSPanel {
         }
 
         sparkline.points = m.latency
+        sparkline.maxGap = 10
         sparkline.isHidden = false
 
         var parts: [String] = []
@@ -200,36 +201,51 @@ final class PopupPanel: NSPanel {
         dividers[2].isHidden = footerLabel.isHidden
     }
 
+    /// Off Starlink: the same card, measuring the network the Mac is on instead of the dish.
     private func showOffStarlink(_ m: Monitor) {
-        setHeader("NOT CONNECTED", dot: nil)
-        bigLabel.textColor = .white
-        // Same layout as on Starlink: latency is the big number, the connection is the detail.
-        bigLabel.stringValue = m.internetLatencyMs.map { "\(Int($0.rounded())) ms" } ?? "—"
-        bigSubLabel.stringValue = m.connection ?? ""
-        sparkline.isHidden = true
-        statusLine.stringValue = "Online through another network"
+        let n = m.network
+        let name = (n.connection ?? m.connection ?? "Network").uppercased()
+        switch n.state {
+        case "down": setHeader(name + " · NO INTERNET", dot: RED, prefix: false)
+        case "degraded": setHeader(name + " · DEGRADED", dot: ORANGE, prefix: false)
+        default: setHeader(name + " · CONNECTED", dot: GREEN, prefix: false)
+        }
+
+        if n.state == "down" {
+            bigLabel.stringValue = "Offline"
+            bigLabel.textColor = RED
+            bigSubLabel.stringValue = n.downSince.map { "for " + Fmt.duration(Date().timeIntervalSince($0)) } ?? ""
+        } else {
+            bigLabel.textColor = .white
+            bigLabel.stringValue = n.latencyMs.map { "\(Int($0.rounded())) ms" } ?? "…"
+            bigSubLabel.stringValue = n.avgLatencyMs.map { "avg \(Int($0.rounded())) ms" } ?? ""
+        }
+
+        sparkline.points = n.latency
+        sparkline.maxGap = NetworkStats.probeEvery * 4  // checks every few seconds, not every second
+        sparkline.isHidden = false
+        let onFor = Date().timeIntervalSince(n.connectedSince)
+        statusLine.stringValue = "Connected for \(onFor < 60 ? "less than a minute" : Fmt.ago(onFor)) · Not on Starlink"
         statusLine.isHidden = false
         alertLine.isHidden = true
         dividers[0].isHidden = false
+        sectionLabel.isHidden = true
+
+        columns[0].set("DOWNLOAD", "\(Fmt.mbps(n.downBps)) Mbps", color: GREEN)
+        columns[1].set("UPLOAD", "\(Fmt.mbps(n.upBps)) Mbps", color: .white)
+        columns[2].set("LOSS", String(format: "%.1f %%", n.lossPercent), color: n.lossPercent > 2 ? ORANGE : .white)
+        columnsRow.alphaValue = 1
+        columnsRow.isHidden = false
+
+        showOutages(n.outages, title: "OUTAGES TODAY")
 
         if let seen = m.lastSeen {
             let age = Date().timeIntervalSince(seen.date)
-            sectionLabel.stringValue = "LAST SEEN ON STARLINK · " + (age < 60 ? "JUST NOW" : Fmt.ago(age).uppercased() + " AGO")
-            sectionLabel.isHidden = false
-            columns[0].set("DOWNLOAD", "\(Fmt.mbps(seen.downBps)) Mbps", color: .white)
-            columns[1].set("UPLOAD", "\(Fmt.mbps(seen.upBps)) Mbps", color: .white)
-            columns[2].set("LATENCY", seen.latencyMs.map { "\(Int($0.rounded())) ms" } ?? "—", color: .white)
-            columnsRow.alphaValue = 0.55
-            columnsRow.isHidden = false
-            showOutages(seen.outagesToday, title: "OUTAGES UNTIL THEN", hideWhenMissing: true)
+            let lat = seen.latencyMs.map { " · \(Int($0.rounded())) ms" } ?? ""
+            footerLabel.stringValue = "Last seen on Starlink " + (age < 60 ? "just now" : Fmt.ago(age) + " ago") + lat
         } else {
-            sectionLabel.stringValue = "NO STARLINK DATA YET"
-            sectionLabel.isHidden = false
-            columnsRow.isHidden = true
-            showOutages(nil, title: "", hideWhenMissing: true)
+            footerLabel.stringValue = "Starlink stats appear when you join a Starlink network"
         }
-
-        footerLabel.stringValue = "Resumes when you're back on Starlink"
         footerLabel.isHidden = false
         dividers[2].isHidden = false
     }
@@ -276,7 +292,7 @@ final class PopupPanel: NSPanel {
 
         outagesTitle.stringValue = title
         if let o {
-            outagesTotal.stringValue = "\(o.count) · \(Fmt.duration(o.totalS))"
+            outagesTotal.stringValue = o.count == 0 ? "" : "\(o.count) · \(Fmt.duration(o.totalS))"
             if o.items.isEmpty {
                 outagesStack.addArrangedSubview(row("No outages today", nil))
             }
@@ -391,6 +407,7 @@ private final class Divider: NSView {
 /// Last 15 minutes of latency, drawn by hand (takes the place of the other apps' progress bar).
 private final class Sparkline: NSView {
     var points: [Point] = [] { didSet { needsDisplay = true } }
+    var maxGap: TimeInterval = 10   // break the line when samples are further apart than this
 
     override func draw(_ dirtyRect: NSRect) {
         let bg = NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4)
@@ -415,7 +432,7 @@ private final class Sparkline: NSView {
         var prev: Point?
         for p in visible {
             // Break the line across gaps in the data (outages, app asleep).
-            if let q = prev, p.date.timeIntervalSince(q.date) <= 10 { line.line(to: pt(p)) } else { line.move(to: pt(p)) }
+            if let q = prev, p.date.timeIntervalSince(q.date) <= maxGap { line.line(to: pt(p)) } else { line.move(to: pt(p)) }
             prev = p
         }
         NSColor.white.withAlphaComponent(0.7).setStroke()

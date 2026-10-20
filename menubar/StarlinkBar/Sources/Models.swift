@@ -90,7 +90,7 @@ enum Labels {
         "unknown": "unknown", "booting": "booting", "stowed": "stowed",
         "thermal_shutdown": "thermal shutdown", "no_schedule": "no schedule",
         "no_sats": "no satellites", "obstructed": "obstructed", "no_downlink": "no downlink",
-        "no_pings": "no network response", "actively_hunting": "searching for satellite",
+        "no_pings": "no network response", "no_internet": "no internet", "actively_hunting": "searching for satellite",
         "dish_unreachable": "dish unreachable",
     ]
 
