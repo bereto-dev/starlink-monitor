@@ -2,9 +2,9 @@ import AppKit
 
 /// The dish glyph (tools/dish.svg), used for the menu bar icon and the app icon.
 enum DishShape {
-    /// The SVG's path data: only M / L / Z commands, viewBox 0 0 221.420897 86.5815804.
-    static let pathData = "M2.00808772,9.45295827 L0,16.587071 L125.728192,86.5815804 L219.207118,72.0795467 L221.420897,65.3198233 L97.8546919,0 L2.00808772,9.45295827 Z M64.6036004,74.3628771 L80.8754741,74.3628771 L102.29113,70.7610455 L81.8754741,59.1398368 L64.6036004,74.3628771 Z"
-    static let viewBox = NSSize(width: 221.420897, height: 86.5815804)
+    /// The SVG's path data: only M / L / Z commands, viewBox 0 0 800 299.216595.
+    static let pathData = "M786.42725,3.12638804e-13 L800,37.1900744 L411.052522,228.076289 L10.0470354,299.216595 L0,264.936326 L786.42725,3.12638804e-13 Z M468.422971,212.036891 L567.388242,299.216595 L505.883286,299.216595 L417.893998,236.254361 L468.422971,212.036891 Z"
+    static let viewBox = NSSize(width: 800, height: 299.216595)
 
     /// The shape scaled to fit `rect`, centered, flipped from SVG (y down) to AppKit (y up).
     static func path(fitting rect: NSRect) -> NSBezierPath {
@@ -35,8 +35,9 @@ enum DishShape {
         return path
     }
 
-    /// Template image for the menu bar (adapts to light/dark menu bars).
-    static func menuBarImage(height: CGFloat = 10) -> NSImage {
+    /// Template image for the menu bar (adapts to light/dark menu bars). The profile is thin,
+    /// so it's drawn taller than a typical 10 pt glyph to stay legible.
+    static func menuBarImage(height: CGFloat = 12) -> NSImage {
         let size = NSSize(width: ceil(height * viewBox.width / viewBox.height), height: height)
         let image = NSImage(size: size, flipped: false) { rect in
             NSColor.black.setFill()
