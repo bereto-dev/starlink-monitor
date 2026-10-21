@@ -145,7 +145,7 @@ A full-screen web page, built to also run on old smart-TV browsers:
 Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swiftc` directly (`build.sh`, universal); no Xcode project, no dependencies. Same structure and look as the author's other menu bar apps (EFStatus, AsanaStatus):
 
 - `StatusBarController` owns the `NSStatusItem`: left click toggles the popup, right click opens the menu (Refresh Now, Open Starlink Dashboard in collector mode, Settings…, About, Check for Updates, Quit). The popup closes on any click outside it and when displays change.
-- `PopupPanel` is a borderless `NSPanel` with a hand-drawn dark card (always dark, 260 pt wide): small uppercase section labels, a big number, a hand-drawn latency sparkline, DOWNLOAD / UPLOAD / LOSS columns, and today's outages as rows.
+- `PopupPanel` is a borderless `NSPanel` with a hand-drawn dark card (always dark, 320 pt wide): small uppercase section labels, a big number, a hand-drawn latency sparkline, DOWNLOAD / UPLOAD / LOSS columns, and today's outages as rows.
 - `SettingsWindow` and `AboutWindow` are regular windows; settings apply immediately.
 - `Monitor` + `DishClient` are the data layer (no UI code).
 

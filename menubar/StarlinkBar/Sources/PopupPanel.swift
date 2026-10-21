@@ -1,6 +1,6 @@
 import Cocoa
 
-private let PANEL_W: CGFloat = 260
+private let PANEL_W: CGFloat = 320
 private let PAD: CGFloat = 12
 private let CONTENT_W: CGFloat = PANEL_W - 12 - PAD * 2   // card is inset 6 pt on each side
 
