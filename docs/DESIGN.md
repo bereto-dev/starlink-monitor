@@ -150,7 +150,7 @@ Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swif
 - `Monitor` + `DishClient` are the data layer (no UI code).
 
 - **Bar:** the dish glyph (`tools/dish.svg`, drawn by `DishShape.swift`) as a template image on Starlink, an antenna on other networks, plus latency or download (configurable), or "offline" during an outage. Dimmed when there's no connection at all.
-- **App icon:** diagonal blue gradient rounded square with the white dish; regenerate with `tools/make-icon.sh` (writes `appicon.png` and `Resources/AppIcon.icns`).
+- **App icon:** near-white rounded square with a subtle gray gradient and the black dish (close to the Starlink look); regenerate with `tools/make-icon.sh` (writes `appicon.png` and `Resources/AppIcon.icns`).
 - **Debug:** `StarlinkBar --snapshot out.png [-snapshotDelay N] [-snapshotWindows YES]` renders the popup (and the Settings/About windows) to PNG and quits.
 - **Notifications:** outage longer than 10 s ("Starlink offline"), recovery with the outage duration, optional high latency for 5 minutes.
 - **Data source:** the dish directly (default; status every 2 s, history every 30 s) or a collector URL (adds the Starlink Dashboard link and speed tests).

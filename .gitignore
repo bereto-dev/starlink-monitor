@@ -6,3 +6,4 @@ __pycache__/
 *.db-shm
 menubar/StarlinkBar/build/
 menubar/StarlinkBar/dist/
+brag-output*/
