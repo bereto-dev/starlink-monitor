@@ -130,15 +130,7 @@ final class StatusBarController: NSObject {
               let screen = btnWindow.screen ?? NSScreen.main else { return }
 
         if popup == nil {
-            let p = PopupPanel()
-            p.onRefresh = { [weak self] in
-                guard let self else { return }
-                Task { @MainActor in
-                    await self.monitor.refreshNow()
-                    self.popup?.setRefreshing(false)
-                }
-            }
-            popup = p
+            popup = PopupPanel()
         }
         guard let popup else { return }
         popup.update(from: monitor)

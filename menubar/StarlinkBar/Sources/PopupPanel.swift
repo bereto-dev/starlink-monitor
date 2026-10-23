@@ -10,11 +10,8 @@ private let ORANGE = NSColor(red: 0.95, green: 0.55, blue: 0.20, alpha: 1)
 
 /// The dropdown card: borderless panel, hand-drawn dark card (same look as EFStatus / AsanaStatus).
 final class PopupPanel: NSPanel {
-    var onRefresh: (() -> Void)?
-
     private let dotLabel = label("●", size: 9, weight: .semibold, alpha: 0.45)
     private let headerLabel = label("STARLINK", size: 9, weight: .semibold, alpha: 0.45)
-    private let refreshButton = RefreshButton()
 
     private let bigLabel = label("—", size: 26, weight: .bold, alpha: 1)
     private let bigSubLabel = label("", size: 11, weight: .regular, alpha: 0.5)
@@ -71,11 +68,7 @@ final class PopupPanel: NSPanel {
             card.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -6),
         ])
 
-        refreshButton.onTap = { [weak self] in
-            self?.refreshButton.setLoading(true)
-            self?.onRefresh?()
-        }
-        let headerRow = hstack([dotLabel, headerLabel, spacer(), refreshButton], spacing: 4, align: .centerY)
+        let headerRow = hstack([dotLabel, headerLabel, spacer()], spacing: 4, align: .centerY)
         let bigRow = hstack([bigLabel, bigSubLabel], spacing: 6, align: .lastBaseline)
 
         sparkline.translatesAutoresizingMaskIntoConstraints = false
@@ -122,10 +115,6 @@ final class PopupPanel: NSPanel {
         for l in [statusLine, alertLine, footerLabel] {
             l.preferredMaxLayoutWidth = CONTENT_W
         }
-    }
-
-    func setRefreshing(_ loading: Bool) {
-        refreshButton.setLoading(loading)
     }
 
     // MARK: - Content
@@ -386,7 +375,7 @@ private final class Column: NSStackView {
     }
 }
 
-// MARK: - Card, divider, sparkline, refresh button
+// MARK: - Card, divider, sparkline
 
 private final class CardView: NSView {
     override func draw(_ dirtyRect: NSRect) {
@@ -437,55 +426,5 @@ private final class Sparkline: NSView {
         }
         NSColor.white.withAlphaComponent(0.7).setStroke()
         line.stroke()
-    }
-}
-
-private final class RefreshButton: NSView {
-    var onTap: (() -> Void)?
-    private let imageView = NSImageView()
-    private var isLoading = false
-
-    override init(frame: NSRect) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
-        let cfg = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
-        imageView.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?
-            .withSymbolConfiguration(cfg)
-        imageView.contentTintColor = NSColor.white.withAlphaComponent(0.4)
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(imageView)
-        NSLayoutConstraint.activate([
-            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            widthAnchor.constraint(equalToConstant: 16),
-            heightAnchor.constraint(equalToConstant: 16),
-        ])
-        addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(tapped)))
-        toolTip = "Refresh now"
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    func setLoading(_ loading: Bool) {
-        isLoading = loading
-        imageView.contentTintColor = NSColor.white.withAlphaComponent(loading ? 0.6 : 0.4)
-        imageView.wantsLayer = true
-        guard let layer = imageView.layer else { return }
-        if loading {
-            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-            layer.position = CGPoint(x: imageView.frame.midX, y: imageView.frame.midY)
-            let r = CABasicAnimation(keyPath: "transform.rotation")
-            r.fromValue = 0
-            r.toValue = -CGFloat.pi * 2
-            r.duration = 0.8
-            r.repeatCount = .infinity
-            layer.add(r, forKey: "spin")
-        } else {
-            layer.removeAnimation(forKey: "spin")
-        }
-    }
-
-    @objc private func tapped() {
-        guard !isLoading else { return }
-        onTap?()
     }
 }
