@@ -37,7 +37,7 @@ final class AboutWindow: NSWindow {
             "It reads the dish on your local network directly, the same way the Starlink app does. It's read-only: it only asks for status and history and never sends commands to the dish.")
 
         let linksHeader = sectionHeader("Links")
-        let updatesBtn = linkButton(title: "🔄  Check for Updates", url: StatusBarController.releasesURL)
+        let updatesBtn = linkButton(title: "🔄  Check for Updates", url: StatusBarController.updatesURL)
         let sourceBtn = linkButton(title: "💻  Source on GitHub", url: StatusBarController.repoURL)
 
         let footnote = NSTextField(labelWithString: "Not affiliated with SpaceX or Starlink.")

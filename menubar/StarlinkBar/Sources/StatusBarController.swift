@@ -15,7 +15,8 @@ final class StatusBarController: NSObject {
     private var renderScheduled = false
 
     static let repoURL = URL(string: "https://github.com/bereto-dev/starlink-monitor")!
-    static let releasesURL = URL(string: "https://github.com/bereto-dev/starlink-monitor/releases/latest")!
+    /// Downloads live on Gumroad (source on GitHub), same split as the other menu bar apps.
+    static let updatesURL = URL(string: "https://bereto.gumroad.com/l/starlink-bar")!
 
     init(monitor: Monitor) {
         self.monitor = monitor
@@ -204,7 +205,7 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func openUpdates() {
-        NSWorkspace.shared.open(Self.releasesURL)
+        NSWorkspace.shared.open(Self.updatesURL)
     }
 
     @objc private func showSettings() {

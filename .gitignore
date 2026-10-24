@@ -7,3 +7,4 @@ __pycache__/
 menubar/StarlinkBar/build/
 menubar/StarlinkBar/dist/
 brag-output*/
+AGENTS.md
