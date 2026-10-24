@@ -16,7 +16,7 @@ final class StatusBarController: NSObject {
 
     static let repoURL = URL(string: "https://github.com/bereto-dev/starlink-monitor")!
     /// Downloads live on Gumroad (source on GitHub), same split as the other menu bar apps.
-    static let updatesURL = URL(string: "https://bereto.gumroad.com/l/starlink-bar")!
+    static let updatesURL = URL(string: "https://bereto.gumroad.com/l/starlinkbar")!
 
     init(monitor: Monitor) {
         self.monitor = monitor

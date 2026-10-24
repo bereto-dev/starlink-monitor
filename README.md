@@ -1,10 +1,10 @@
-# StarlinkBar (v0.3.1)
+# StarlinkBar (v0.3.2)
 
 A lightweight macOS menu bar app that shows your Starlink connection at a glance: live latency, packet loss, throughput, obstruction, dish alerts and today's outages, read straight from your dish. Ships as a universal binary for Intel and Apple Silicon.
 
 ![StarlinkBar popup under the menu bar: STARLINK · CONNECTED, 28 ms latency with a 15-minute sparkline, download, upload, loss and today's outages](starlinkbar_cover.jpg)
 
-> Running an older version? Compare the number above to the one under **About StarlinkBar** in the app (right-click the menu bar icon), then re-download from [Gumroad](https://bereto.gumroad.com/l/starlink-bar) if you're behind.
+> Running an older version? Compare the number above to the one under **About StarlinkBar** in the app (right-click the menu bar icon), then re-download from [Gumroad](https://bereto.gumroad.com/l/starlinkbar) if you're behind.
 
 **Menu bar:** the dish icon and your latency, like `28 ms` (or download speed, or icon only). It says `offline` during an outage.
 
@@ -25,7 +25,7 @@ Every Starlink dish answers a small local API at `192.168.100.1`, the same one t
 
 When the dish stops answering, StarlinkBar checks whether the internet still works. If it does, you're on another network, not in a Starlink outage, so it measures that network instead and doesn't cry wolf.
 
-The details (gRPC-web transport, field numbers, state rules) are in [docs/DESIGN.md](docs/DESIGN.md).
+The details (gRPC-web transport, field numbers, state rules) are in [docs/DESIGN.md](https://github.com/bereto-dev/starlink-monitor/blob/main/docs/DESIGN.md).
 
 ## Requirements
 
@@ -36,7 +36,7 @@ The details (gRPC-web transport, field numbers, state rules) are in [docs/DESIGN
 
 ## Download & run (no build required)
 
-Get `StarlinkBar.app` from [Gumroad](https://bereto.gumroad.com/l/starlink-bar).
+Get `StarlinkBar.app` from [Gumroad](https://bereto.gumroad.com/l/starlinkbar).
 
 1. Download the app
 2. Move it to your `/Applications` folder
@@ -75,6 +75,9 @@ Then open `http://<mac-ip>:8766/sl-dashboard/`. The dashboard is plain ES5, so i
 API: `/api/now`, `/api/history?range=15m|1h|24h|7d`, `/api/outages?since=&min_s=`.
 
 ## Changelog
+
+### 0.3.2 — New icon
+A cleaner icon: a black dish on white, closer to the Starlink look. Downloads now live on Gumroad, and Check for Updates (right-click menu and About) takes you there.
 
 ### 0.3.1 — Roomier card
 The popup is a bit wider so the numbers and the outage list breathe, and the refresh button is gone (the card already updates every couple of seconds). Refresh Now (⌘R) is still in the right-click menu.
