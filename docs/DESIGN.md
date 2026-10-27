@@ -158,6 +158,8 @@ Plain Swift + AppKit (macOS 13+), no Dock icon (`LSUIElement`), built with `swif
 
 macOS asks for **Local Network** access the first time the app contacts the dish.
 
+**Updates (Sparkle 2.10):** `Updater.swift` wraps `SPUStandardUpdaterController`. The feed is `SUFeedURL` in Info.plist (`https://app-updates.bereto.workers.dev/starlinkbar/appcast.xml`, a Cloudflare Worker serving an R2 bucket, read-only), checked once a day (`SUScheduledCheckInterval` 86400); `SUAllowsAutomaticUpdates` is off, so it always asks before installing. Every zip is EdDSA-signed and Sparkle verifies it against `SUPublicEDKey` before installing; the private key never leaves the maintainer's Keychain. Sparkle compares `CFBundleVersion`, so the build number must go up with every release. `build.sh` downloads Sparkle once into `vendor/` (checked against its SHA-256), embeds it in `Contents/Frameworks` and ad-hoc signs it inside out. Debug: `StarlinkBar --check-for-updates` runs a check right away. The app is not Developer ID signed, so macOS may ask for Local Network access again after an update.
+
 **Off Starlink:** the dish only answers from a Starlink network. When it stops answering, the app checks whether the internet still works (HTTPS request to `www.apple.com/library/test/success.html`). If it does, the Mac is on another network: no Starlink outage alerts, the menu bar switches to an antenna (`antenna.radiowaves.left.and.right`; a signal glyph would look like the system Wi‑Fi icon), and the same card measures **the current network** instead of the dish (`NetworkStats.swift`, no extra permissions):
 
 | Card | Starlink | Other network |

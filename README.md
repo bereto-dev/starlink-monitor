@@ -1,10 +1,10 @@
-# StarlinkBar (v0.3.2)
+# StarlinkBar (v0.4.0)
 
 A lightweight macOS menu bar app that shows your Starlink connection at a glance: live latency, packet loss, throughput, obstruction, dish alerts and today's outages, read straight from your dish. Ships as a universal binary for Intel and Apple Silicon.
 
 ![StarlinkBar popup under the menu bar: STARLINK · CONNECTED, 28 ms latency with a 15-minute sparkline, download, upload, loss and today's outages](starlinkbar_cover.jpg)
 
-> Running an older version? Compare the number above to the one under **About StarlinkBar** in the app (right-click the menu bar icon), then re-download from [Gumroad](https://bereto.gumroad.com/l/starlinkbar) if you're behind.
+> Running an older version? From 0.4.0 on, StarlinkBar updates itself: right-click the menu bar icon → **Check for Updates…**. On 0.3.2 or earlier, re-download it once from [Gumroad](https://bereto.gumroad.com/l/starlinkbar).
 
 **Menu bar:** the dish icon and your latency, like `28 ms` (or download speed, or icon only). It says `offline` during an outage.
 
@@ -16,6 +16,8 @@ A lightweight macOS menu bar app that shows your Starlink connection at a glance
 - Today's outages with time, duration and cause
 
 **Notifications:** when Starlink drops for more than 10 seconds, and again when it's back ("The outage lasted 42 s"). Optional heads-up for high latency.
+
+**Updates:** checks once a day and asks before installing. Every update is signed and verified before it's applied.
 
 **Not on Starlink?** The same card measures whatever network you're on (Wi‑Fi, Ethernet, hotspot): latency, loss, throughput and outages, with your last Starlink numbers at the bottom. The menu bar switches to an antenna so you always know which one you're looking at.
 
@@ -60,6 +62,7 @@ Right-click the menu bar icon → **Settings…**
 - What the menu bar shows: latency, download speed or icon only
 - Notifications for outages and for high latency
 - Open at login
+- Check for updates automatically (on by default)
 - Data source: the dish directly (default) or the optional collector below
 
 ## Collector + Starlink Dashboard (optional)
@@ -75,6 +78,9 @@ Then open `http://<mac-ip>:8766/sl-dashboard/`. The dashboard is plain ES5, so i
 API: `/api/now`, `/api/history?range=15m|1h|24h|7d`, `/api/outages?since=&min_s=`.
 
 ## Changelog
+
+### 0.4.0 — Automatic updates
+StarlinkBar now updates itself. Once a day it checks for a new version and, if there is one, shows you what's new with an Install and Relaunch button. You can also check any time from the right-click menu (Check for Updates…), and turn the daily check off in Settings. Updates are signed, so the app only installs versions that really come from me.
 
 ### 0.3.2 — New icon
 A cleaner icon: a black dish on white, closer to the Starlink look. Downloads now live on Gumroad, and Check for Updates (right-click menu and About) takes you there.

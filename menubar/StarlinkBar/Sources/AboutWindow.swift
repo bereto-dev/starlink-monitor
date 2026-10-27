@@ -37,7 +37,12 @@ final class AboutWindow: NSWindow {
             "It reads the dish on your local network directly, the same way the Starlink app does. It's read-only: it only asks for status and history and never sends commands to the dish.")
 
         let linksHeader = sectionHeader("Links")
-        let updatesBtn = linkButton(title: "🔄  Check for Updates", url: StatusBarController.updatesURL)
+        let updatesBtn = NSButton(title: "🔄  Check for Updates", target: self, action: #selector(checkForUpdates))
+        updatesBtn.bezelStyle = .inline
+        updatesBtn.isBordered = false
+        updatesBtn.font = .systemFont(ofSize: 12)
+        updatesBtn.contentTintColor = .linkColor
+        let gumroadBtn = linkButton(title: "🛍️  StarlinkBar on Gumroad", url: StatusBarController.gumroadURL)
         let sourceBtn = linkButton(title: "💻  Source on GitHub", url: StatusBarController.repoURL)
 
         let footnote = NSTextField(labelWithString: "Not affiliated with SpaceX or Starlink.")
@@ -49,7 +54,7 @@ final class AboutWindow: NSWindow {
             div(),
             howHeader, howBody,
             div(),
-            linksHeader, updatesBtn, sourceBtn,
+            linksHeader, updatesBtn, gumroadBtn, sourceBtn,
             footnote,
         ])
         stack.orientation = .vertical
@@ -101,6 +106,10 @@ final class AboutWindow: NSWindow {
         b.contentTintColor = .linkColor
         b.identifier = NSUserInterfaceItemIdentifier(url.absoluteString)
         return b
+    }
+
+    @objc private func checkForUpdates() {
+        MainActor.assumeIsolated { Updater.shared.checkForUpdates() }
     }
 
     @objc private func openLink(_ sender: NSButton) {

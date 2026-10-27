@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.2</string>
+	<string>0.4.0</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>8</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
@@ -31,5 +31,15 @@
 	<string>MIT License</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>StarlinkBar reads status and history from your Starlink dish on the local network.</string>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://app-updates.bereto.workers.dev/starlinkbar/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>qLMiFNAkLUZHgtEuRlPKjYrhDXNpuxs4fKY6NtSB3RE=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

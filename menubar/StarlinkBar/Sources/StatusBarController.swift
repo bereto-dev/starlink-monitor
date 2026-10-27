@@ -15,8 +15,8 @@ final class StatusBarController: NSObject {
     private var renderScheduled = false
 
     static let repoURL = URL(string: "https://github.com/bereto-dev/starlink-monitor")!
-    /// Downloads live on Gumroad (source on GitHub), same split as the other menu bar apps.
-    static let updatesURL = URL(string: "https://bereto.gumroad.com/l/starlinkbar")!
+    /// The product page on Gumroad (first download). Updates after that come through Sparkle.
+    static let gumroadURL = URL(string: "https://bereto.gumroad.com/l/starlinkbar")!
 
     init(monitor: Monitor) {
         self.monitor = monitor
@@ -182,7 +182,7 @@ final class StatusBarController: NSObject {
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(showSettings), ","))
         menu.addItem(item("About StarlinkBar", #selector(showAbout), ""))
-        menu.addItem(item("Check for Updates", #selector(openUpdates), ""))
+        menu.addItem(item("Check for Updates…", #selector(checkForUpdates), ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit StarlinkBar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -204,8 +204,8 @@ final class StatusBarController: NSObject {
         NSWorkspace.shared.open(monitor.collectorURL.appendingPathComponent("sl-dashboard/"))
     }
 
-    @objc private func openUpdates() {
-        NSWorkspace.shared.open(Self.updatesURL)
+    @objc private func checkForUpdates() {
+        Updater.shared.checkForUpdates()
     }
 
     @objc private func showSettings() {

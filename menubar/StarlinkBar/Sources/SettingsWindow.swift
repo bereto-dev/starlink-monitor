@@ -18,6 +18,7 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
     private let addressField = NSTextField()
     private let sourceHelp = NSTextField(wrappingLabelWithString: "")
     private let loginError = NSTextField(wrappingLabelWithString: "")
+    private let updatesCheck = NSButton(checkboxWithTitle: "Check for updates automatically", target: nil, action: nil)
 
     private var defaults: UserDefaults { .standard }
 
@@ -48,6 +49,8 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
             c.target = self
             c.action = #selector(notificationsChanged)
         }
+        updatesCheck.target = self
+        updatesCheck.action = #selector(updatesChanged)
         loginCheck.target = self
         loginCheck.action = #selector(loginChanged)
 
@@ -80,6 +83,7 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
             [rowLabel("Menu bar shows"), barPopup],
             [rowLabel("Notify me about"), notifications],
             [rowLabel("Startup"), login],
+            [rowLabel("Updates"), updatesCheck],
             [rowLabel("Data source"), sourcePopup],
             [addressLabel, address],
         ])
@@ -129,6 +133,7 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
         latencyCheck.state = defaults.bool(forKey: "notifyHighLatency") ? .on : .off
         loginCheck.state = SMAppService.mainApp.status == .enabled ? .on : .off
         loginError.isHidden = true
+        updatesCheck.state = Updater.shared.automaticallyChecks ? .on : .off
         sourcePopup.selectItem(at: monitor.source == .dish ? 0 : 1)
         showAddress()
     }
@@ -174,6 +179,10 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
             loginError.isHidden = false
             loginCheck.state = SMAppService.mainApp.status == .enabled ? .on : .off
         }
+    }
+
+    @objc private func updatesChanged() {
+        Updater.shared.automaticallyChecks = updatesCheck.state == .on
     }
 
     @objc private func sourceChanged() {

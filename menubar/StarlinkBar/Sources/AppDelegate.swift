@@ -8,6 +8,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         buildAppMenu()
         controller = StatusBarController(monitor: Monitor())
+        // Daily update checks (Sparkle). Not in snapshot mode: that one renders and quits.
+        if !CommandLine.arguments.contains("--snapshot") { Updater.shared.start() }
+        // Debug: `StarlinkBar --check-for-updates` runs a user-initiated update check right away.
+        if CommandLine.arguments.contains("--check-for-updates") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Updater.shared.checkForUpdates() }
+        }
 
         // Debug: `StarlinkBar --snapshot out.png` renders the popup card to a PNG and quits.
         // Wait a few seconds first (override with `-snapshotDelay N`) so the data has loaded.
