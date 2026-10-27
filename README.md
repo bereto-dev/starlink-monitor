@@ -2,7 +2,7 @@
 
 A lightweight macOS menu bar app that shows your Starlink connection at a glance: live latency, packet loss, throughput, obstruction, dish alerts and today's outages, read straight from your dish. Ships as a universal binary for Intel and Apple Silicon.
 
-![StarlinkBar popup under the menu bar: STARLINK · CONNECTED, 28 ms latency with a 15-minute sparkline, download, upload, loss and today's outages](starlinkbar_cover.jpg)
+![StarlinkBar in the menu bar showing 33 ms, with its popup: STARLINK · CONNECTED, latency with a 15-minute sparkline, download, upload, loss and today's outages](starlinkbar_cover.jpg)
 
 > Running an older version? From 0.4.0 on, StarlinkBar updates itself: right-click the menu bar icon → **Check for Updates…**. On 0.3.2 or earlier, re-download it once from [Gumroad](https://bereto.gumroad.com/l/starlinkbar).
 
