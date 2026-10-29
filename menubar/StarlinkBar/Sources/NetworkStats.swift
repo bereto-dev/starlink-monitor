@@ -162,7 +162,7 @@ final class NetworkStats {
         }
     }
 
-    /// The Mac's IPv4 address on an interface (e.g. "192.168.1.107").
+    /// The Mac's IPv4 address on an interface (e.g. "192.168.1.20").
     static func ipv4(_ name: String) -> String? {
         var list: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&list) == 0 else { return nil }
