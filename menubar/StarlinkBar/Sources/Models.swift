@@ -85,6 +85,166 @@ struct Point: Identifiable {
     var id: Date { date }
 }
 
+/// Account state, speed limits and pending updates, read from dish_get_status.
+/// Enum values come from the dish's own reflection (firmware 2026.10).
+struct ServiceState {
+    static let rebootRequired: UInt64 = 6   // SoftwareUpdateState.REBOOT_REQUIRED
+
+    var disablement: UInt64 = 0      // UtDisablementCode: 0 unknown, 1 OKAY
+    var downloadLimit: UInt64 = 0    // RateLimitReason: 0 unknown, 1 NO_LIMIT
+    var uploadLimit: UInt64 = 0
+    var updateState: UInt64 = 0      // SoftwareUpdateState: 1 IDLE, 2-5 downloading/installing, 6 reboot required
+    var updateProgress: Double?
+    var rebootReady = false
+    var rebootHour: Int?             // the dish's update window, local time
+    var rebootScheduled: Date?
+
+    struct Callout {
+        enum Level { case problem, warning, info }
+        let level: Level
+        let text: String
+    }
+
+    static let disablementTexts: [UInt64: String] = [
+        2: "No active Starlink plan on this dish. Check your account in the Starlink app.",
+        3: "Service is limited: the dish is too far from its service address.",
+        4: "Service is off: the dish is at sea without an ocean plan.",
+        6: "Starlink isn't available in this country.",
+        7: "Data limit reached. Service is restricted until you add data or the billing cycle resets.",
+        8: "Starlink is disabled in this area right now.",
+        10: "Roaming isn't allowed on this plan.",
+        11: "Starlink can't confirm where the dish is, so service is limited.",
+        12: "Your Starlink account is disabled. Check billing in the Starlink app.",
+        13: "The dish software is too old for service and needs an update.",
+        14: "Moving too fast for this plan, so service is paused.",
+        15: "Service is limited while flying over this area.",
+        16: "Starlink isn't allowed in this area.",
+        17: "The dish is outside its home region, so service is limited.",
+    ]
+
+    static let limitTexts: [UInt64: String] = [
+        2: "Speeds are limited by your plan's policy right now.",
+        3: "Speeds are capped by a limit set on your Starlink account.",
+        5: "Data limit reached. Speeds are reduced until you add data or the billing cycle resets.",
+        6: "Speeds are reduced: your plan is on its low-speed tier.",
+    ]
+
+    /// When the dish will restart for its update, as "around 3:00".
+    var rebootWhen: String {
+        if let d = rebootScheduled { return "around " + Fmt.clock(d.timeIntervalSince1970) }
+        if let h = rebootHour { return String(format: "around %d:00", h) }
+        return "soon"
+    }
+
+    /// What to tell the user above the main reading, most serious first.
+    var callouts: [Callout] {
+        var out: [Callout] = []
+        if disablement > 1 {
+            out.append(Callout(level: .problem, text: Self.disablementTexts[disablement]
+                ?? "Starlink service is restricted on this dish (code \(disablement)). Check the Starlink app."))
+        }
+        let down = downloadLimit > 1 ? downloadLimit : nil
+        let up = uploadLimit > 1 ? uploadLimit : nil
+        let overageSaid = disablement == 7  // DATA_OVERAGE_SANDBOX_POLICY already says "Data limit reached"
+        if let reason = down ?? up, !(overageSaid && reason == 5) {
+            var text = Self.limitTexts[reason] ?? "Speeds are limited on this dish (reason \(reason))."
+            if down == nil { text += " Upload only." } else if up == nil { text += " Download only." }
+            out.append(Callout(level: .warning, text: text))
+        }
+        if rebootReady {
+            out.append(Callout(level: .info, text: "Update ready. The dish will restart \(rebootWhen), about a minute offline."))
+        } else if (2...5).contains(updateState) {
+            let pct = updateProgress.map { String(format: " (%.0f %%)", $0 * 100) } ?? ""
+            out.append(Callout(level: .info, text: "The dish is downloading an update\(pct)."))
+        }
+        return out
+    }
+}
+
+/// The five readings the popup shows. The chosen one is the big number + chart (and the menu bar);
+/// the other four are the columns.
+enum Metric: String, CaseIterable {
+    case latency, download, upload, loss, power
+
+    var title: String { rawValue.uppercased() }
+
+    var name: String {
+        switch self {
+        case .latency: return "Latency"
+        case .download: return "Download speed"
+        case .upload: return "Upload speed"
+        case .loss: return "Packet loss"
+        case .power: return "Power use"
+        }
+    }
+
+    var unit: String {
+        switch self {
+        case .latency: return "ms"
+        case .download, .upload: return "Mbps"
+        case .loss: return "%"
+        case .power: return "W"
+        }
+    }
+
+    /// Smallest top of the chart's scale, so a quiet line doesn't fill the whole height.
+    var chartFloor: Double {
+        switch self {
+        case .latency: return 40
+        case .download: return 1
+        case .upload: return 0.5
+        case .loss: return 5
+        case .power: return 40
+        }
+    }
+
+    /// The number alone (speeds in Mbps, loss in %, power in W).
+    func format(_ v: Double?) -> String {
+        guard let v, v.isFinite else { return "—" }
+        switch self {
+        case .latency: return "\(Int(v.rounded()))"
+        case .download, .upload: return v >= 100 ? String(format: "%.0f", v) : v >= 10 ? String(format: "%.1f", v) : String(format: "%.2f", v)
+        case .loss: return String(format: "%.1f", v)
+        case .power: return "\(Int(v.rounded()))"
+        }
+    }
+
+    func text(_ v: Double?) -> String { "\(format(v)) \(unit)" }
+
+    /// The reading shown big in the popup and in the menu bar.
+    static var main: Metric {
+        get {
+            let d = UserDefaults.standard
+            if let m = d.string(forKey: "mainMetric").flatMap(Metric.init) { return m }
+            return d.string(forKey: "barDisplay") == "download" ? .download : .latency  // before 0.5
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "mainMetric") }
+    }
+
+    /// Whether the menu bar shows the main reading next to the icon.
+    static var showInMenuBar: Bool {
+        get {
+            let d = UserDefaults.standard
+            return d.object(forKey: "menuBarShowsValue") as? Bool ?? (d.string(forKey: "barDisplay") != "none")
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "menuBarShowsValue") }
+    }
+}
+
+/// Current value, recent average and last 15 minutes of every metric, from the dish or the other network.
+struct Readings {
+    var value: [Metric: Double] = [:]
+    var average: [Metric: Double] = [:]
+    var series: [Metric: [Point]] = [:]
+
+    /// Average of the last 30 s of a series (measured from its newest point).
+    static func recentAverage(_ points: [Point], window: TimeInterval = 30) -> Double? {
+        guard let last = points.last?.date else { return nil }
+        let recent = points.filter { last.timeIntervalSince($0.date) <= window }
+        return recent.map(\.value).reduce(0, +) / Double(recent.count)
+    }
+}
+
 enum Labels {
     static let causes: [String: String] = [
         "unknown": "unknown", "booting": "booting", "stowed": "stowed",

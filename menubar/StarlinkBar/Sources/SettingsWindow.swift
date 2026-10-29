@@ -9,9 +9,12 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
     var onChange: (() -> Void)?
 
     private let monitor: Monitor
-    private let barPopup = NSPopUpButton()
+    private let mainPopup = NSPopUpButton()
+    private let menuBarCheck = NSButton(checkboxWithTitle: "Also show it in the menu bar", target: nil, action: nil)
     private let outagesCheck = NSButton(checkboxWithTitle: "Outages longer than 10 seconds", target: nil, action: nil)
     private let latencyCheck = NSButton(checkboxWithTitle: "High latency (over 80 ms for 5 minutes)", target: nil, action: nil)
+    private let packetLossCheck = NSButton(checkboxWithTitle: "High packet loss (slow but not offline)", target: nil, action: nil)
+    private let updatesNotifyCheck = NSButton(checkboxWithTitle: "The dish restarting for an update", target: nil, action: nil)
     private let loginCheck = NSButton(checkboxWithTitle: "Open StarlinkBar at login", target: nil, action: nil)
     private let sourcePopup = NSPopUpButton()
     private let addressLabel = NSTextField(labelWithString: "")
@@ -41,11 +44,13 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
         let root = NSView(frame: contentView!.bounds)
         contentView = root
 
-        barPopup.addItems(withTitles: ["Latency", "Download speed", "Icon only"])
-        barPopup.target = self
-        barPopup.action = #selector(barChanged)
+        mainPopup.addItems(withTitles: Metric.allCases.map(\.name))
+        mainPopup.target = self
+        mainPopup.action = #selector(mainChanged)
+        menuBarCheck.target = self
+        menuBarCheck.action = #selector(mainChanged)
 
-        for c in [outagesCheck, latencyCheck] {
+        for c in [outagesCheck, latencyCheck, packetLossCheck, updatesNotifyCheck] {
             c.target = self
             c.action = #selector(notificationsChanged)
         }
@@ -75,12 +80,17 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
         }
         loginError.textColor = .systemRed
 
-        let notifications = vstack([outagesCheck, latencyCheck, testBtn], spacing: 6)
+        let mainHelp = NSTextField(wrappingLabelWithString: "The big number and chart in the popup. Power use is only measured on Starlink; on other networks latency shows instead.")
+        mainHelp.font = .systemFont(ofSize: 11)
+        mainHelp.textColor = .secondaryLabelColor
+        mainHelp.preferredMaxLayoutWidth = WIN_W - 48 - 130
+        let mainReading = vstack([mainPopup, menuBarCheck, mainHelp], spacing: 6)
+        let notifications = vstack([outagesCheck, packetLossCheck, updatesNotifyCheck, latencyCheck, testBtn], spacing: 6)
         let login = vstack([loginCheck, loginError], spacing: 4)
         let address = vstack([addressField, sourceHelp], spacing: 4)
 
         let grid = NSGridView(views: [
-            [rowLabel("Menu bar shows"), barPopup],
+            [rowLabel("Main reading"), mainReading],
             [rowLabel("Notify me about"), notifications],
             [rowLabel("Startup"), login],
             [rowLabel("Updates"), updatesCheck],
@@ -124,13 +134,12 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
     // MARK: - Load / apply
 
     private func load() {
-        switch defaults.string(forKey: "barDisplay") ?? "latency" {
-        case "download": barPopup.selectItem(at: 1)
-        case "none": barPopup.selectItem(at: 2)
-        default: barPopup.selectItem(at: 0)
-        }
+        mainPopup.selectItem(at: Metric.allCases.firstIndex(of: Metric.main) ?? 0)
+        menuBarCheck.state = Metric.showInMenuBar ? .on : .off
         outagesCheck.state = (defaults.object(forKey: "notifyOutages") as? Bool ?? true) ? .on : .off
         latencyCheck.state = defaults.bool(forKey: "notifyHighLatency") ? .on : .off
+        packetLossCheck.state = (defaults.object(forKey: "notifyPacketLoss") as? Bool ?? true) ? .on : .off
+        updatesNotifyCheck.state = (defaults.object(forKey: "notifyUpdates") as? Bool ?? true) ? .on : .off
         loginCheck.state = SMAppService.mainApp.status == .enabled ? .on : .off
         loginError.isHidden = true
         updatesCheck.state = Updater.shared.automaticallyChecks ? .on : .off
@@ -143,7 +152,7 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
             addressLabel.stringValue = "Dish address"
             addressField.placeholderString = Monitor.defaultDishHost
             addressField.stringValue = defaults.string(forKey: "dishHost") ?? Monitor.defaultDishHost
-            sourceHelp.stringValue = "StarlinkBar reads the dish on your network directly. The address is the same on every Starlink install."
+            sourceHelp.stringValue = "StarlinkBar reads the dish on your network directly. The address is the same on every Starlink install, whatever your router's address is."
         } else {
             addressLabel.stringValue = "Collector URL"
             addressField.placeholderString = Monitor.defaultCollectorURL
@@ -152,14 +161,19 @@ final class SettingsWindow: NSWindow, NSTextFieldDelegate {
         }
     }
 
-    @objc private func barChanged() {
-        defaults.set(["latency", "download", "none"][barPopup.indexOfSelectedItem], forKey: "barDisplay")
+    @objc private func mainChanged() {
+        let main = Metric.allCases[mainPopup.indexOfSelectedItem]
+        if main == .power, Metric.main != .power { monitor.refreshAll() }  // power comes from the history: fetch it now
+        Metric.main = main
+        Metric.showInMenuBar = menuBarCheck.state == .on
         onChange?()
     }
 
     @objc private func notificationsChanged() {
         defaults.set(outagesCheck.state == .on, forKey: "notifyOutages")
         defaults.set(latencyCheck.state == .on, forKey: "notifyHighLatency")
+        defaults.set(packetLossCheck.state == .on, forKey: "notifyPacketLoss")
+        defaults.set(updatesNotifyCheck.state == .on, forKey: "notifyUpdates")
     }
 
     @objc private func sendTest() {

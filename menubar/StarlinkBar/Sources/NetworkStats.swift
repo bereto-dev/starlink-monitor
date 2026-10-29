@@ -18,8 +18,22 @@ final class NetworkStats {
         var lossPercent = 0.0          // last 60 s
         var downBps: Double?
         var upBps: Double?
+        var download: [Point] = []     // Mbps, last 15 min
+        var upload: [Point] = []       // Mbps, last 15 min
+        var loss: [Point] = []         // %, last 15 min
         var downSince: Date?
         var outages = Outages(count: 0, totalS: 0, items: [])
+
+        /// Same shape as the dish's readings. There is no power reading off Starlink.
+        var readings: Readings {
+            var r = Readings()
+            r.value = [.latency: latencyMs, .download: downBps.map { $0 / 1e6 }, .upload: upBps.map { $0 / 1e6 },
+                       .loss: lossPercent].compactMapValues { $0 }
+            r.series = [.latency: latency, .download: download, .upload: upload, .loss: loss]
+            r.average[.latency] = avgLatencyMs
+            for m in [Metric.download, .upload, .loss] { r.average[m] = Readings.recentAverage(r.series[m] ?? []) }
+            return r
+        }
     }
 
     static let probeEvery: TimeInterval = 4
@@ -90,7 +104,9 @@ final class NetworkStats {
             snapshot.latencyMs = rtt
             snapshot.latency.append(Point(date: now, value: rtt))
         }
+        snapshot.loss.append(Point(date: now, value: snapshot.lossPercent))
         snapshot.latency.removeAll { now.timeIntervalSince($0.date) > 900 }
+        snapshot.loss.removeAll { now.timeIntervalSince($0.date) > 900 }
         let recent = snapshot.latency.filter { now.timeIntervalSince($0.date) <= Self.latencyWindow }
         snapshot.avgLatencyMs = recent.isEmpty ? nil : recent.map(\.value).reduce(0, +) / Double(recent.count)
 
@@ -136,10 +152,31 @@ final class NetworkStats {
                 snapshot.downBps = Double(Self.delta(rx, last.rx)) * 8 / dt
                 snapshot.upBps = Double(Self.delta(tx, last.tx)) * 8 / dt
                 lastCounters = (now, rx, tx)
+                snapshot.download.append(Point(date: now, value: (snapshot.downBps ?? 0) / 1e6))
+                snapshot.upload.append(Point(date: now, value: (snapshot.upBps ?? 0) / 1e6))
+                snapshot.download.removeAll { now.timeIntervalSince($0.date) > 900 }
+                snapshot.upload.removeAll { now.timeIntervalSince($0.date) > 900 }
             }
         } else {
             lastCounters = (now, rx, tx)
         }
+    }
+
+    /// The Mac's IPv4 address on an interface (e.g. "192.168.1.107").
+    static func ipv4(_ name: String) -> String? {
+        var list: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&list) == 0 else { return nil }
+        defer { freeifaddrs(list) }
+        var p = list
+        while let a = p {
+            defer { p = a.pointee.ifa_next }
+            guard let addr = a.pointee.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET),
+                  String(cString: a.pointee.ifa_name) == name else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(addr, socklen_t(addr.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            return String(cString: host)
+        }
+        return nil
     }
 
     /// Interface counters are 32-bit and wrap around at 4 GB.

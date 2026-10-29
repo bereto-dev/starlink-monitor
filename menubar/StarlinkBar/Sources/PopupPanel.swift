@@ -7,12 +7,14 @@ private let CONTENT_W: CGFloat = PANEL_W - 12 - PAD * 2   // card is inset 6 pt 
 private let GREEN = NSColor(red: 0.25, green: 0.90, blue: 0.50, alpha: 1)
 private let RED = NSColor(red: 1.00, green: 0.42, blue: 0.38, alpha: 1)
 private let ORANGE = NSColor(red: 0.95, green: 0.55, blue: 0.20, alpha: 1)
+private let BLUE = NSColor(red: 0.45, green: 0.65, blue: 1.00, alpha: 1)
 
 /// The dropdown card: borderless panel, hand-drawn dark card (same look as EFStatus / AsanaStatus).
 final class PopupPanel: NSPanel {
     private let dotLabel = label("●", size: 9, weight: .semibold, alpha: 0.45)
     private let headerLabel = label("STARLINK", size: 9, weight: .semibold, alpha: 0.45)
 
+    private let calloutStack = NSStackView()   // plan limits, suspension, pending update
     private let bigLabel = label("—", size: 26, weight: .bold, alpha: 1)
     private let bigSubLabel = label("", size: 11, weight: .regular, alpha: 0.5)
     private let sparkline = Sparkline()
@@ -20,10 +22,11 @@ final class PopupPanel: NSPanel {
     private let alertLine = wrappingLabel(size: 11, weight: .medium, alpha: 1)
 
     private let sectionLabel = label("", size: 9, weight: .semibold, alpha: 0.45)
-    private let columns = [Column(alignRight: false), Column(alignRight: false), Column(alignRight: true)]
+    // The four readings that aren't the main one: left, two centered, right.
+    private let columns: [Column] = [.leading, .centerX, .centerX, .trailing].map { Column(align: $0) }
     private lazy var columnsRow: NSStackView = {
-        let row = hstack(columns, spacing: 8, align: .top)
-        row.distribution = .equalSpacing  // left, centered and right columns, like INPUT / OUTPUT
+        let row = hstack(columns, spacing: 4, align: .top)
+        row.distribution = .equalSpacing  // same gap between columns, first and last flush with the edges
         for c in columns { c.setContentCompressionResistancePriority(.required, for: .horizontal) }
         return row
     }()
@@ -79,8 +82,13 @@ final class PopupPanel: NSPanel {
         outagesStack.spacing = 3
         outagesHeader = hstack([outagesTitle, spacer(), outagesTotal], spacing: 4, align: .centerY)
 
+        calloutStack.orientation = .vertical
+        calloutStack.alignment = .leading
+        calloutStack.spacing = 4
+
         let stack = NSStackView(views: [
             headerRow,
+            calloutStack,
             bigRow,
             sparkline,
             statusLine,
@@ -100,6 +108,7 @@ final class PopupPanel: NSPanel {
         stack.edgeInsets = NSEdgeInsets(top: PAD, left: PAD, bottom: PAD, right: PAD)
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.setCustomSpacing(8, after: sparkline)
+        stack.setCustomSpacing(8, after: calloutStack)
         stack.setCustomSpacing(3, after: sectionLabel)
 
         card.addSubview(stack)
@@ -109,7 +118,7 @@ final class PopupPanel: NSPanel {
             stack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
         ])
-        for v in [headerRow, sparkline, columnsRow, outagesHeader!, outagesStack] + dividers as [NSView] {
+        for v in [headerRow, calloutStack, sparkline, columnsRow, outagesHeader!, outagesStack] + dividers as [NSView] {
             v.widthAnchor.constraint(equalToConstant: CONTENT_W).isActive = true
         }
         for l in [statusLine, alertLine, footerLabel] {
@@ -121,6 +130,8 @@ final class PopupPanel: NSPanel {
 
     func update(from m: Monitor) {
         let status = m.status
+        // Only on Starlink: what the dish says about the plan, the account or an update.
+        showCallouts([.ok, .degraded, .down].contains(status) ? m.service?.callouts ?? [] : [])
         switch status {
         case .notOnStarlink:
             showOffStarlink(m)
@@ -145,18 +156,19 @@ final class PopupPanel: NSPanel {
         default: setHeader("NO INTERNET", dot: RED)
         }
 
+        let main = Metric.main
+        let r = m.readings
         if status == .down {
             bigLabel.stringValue = "Offline"
             bigLabel.textColor = RED
             let since = n?.downSince.map { Fmt.duration(Date().timeIntervalSince1970 - $0) }
             bigSubLabel.stringValue = since.map { "for \($0)" } ?? ""
         } else {
-            bigLabel.textColor = .white
-            bigLabel.stringValue = n?.latencyMs.map { "\(Int($0.rounded())) ms" } ?? "—"
-            bigSubLabel.stringValue = n?.latencyAvg30sMs.map { "avg \(Int($0.rounded())) ms" } ?? ""
+            showBig(main, r)
         }
 
-        sparkline.points = m.latency
+        sparkline.points = r.series[main] ?? []
+        sparkline.floor = main.chartFloor
         sparkline.maxGap = 10
         sparkline.isHidden = false
 
@@ -175,12 +187,7 @@ final class PopupPanel: NSPanel {
 
         dividers[0].isHidden = false
         sectionLabel.isHidden = true
-        let loss = (n?.dropRate ?? 0) * 100
-        columns[0].set("DOWNLOAD", "\(Fmt.mbps(n?.downBps)) Mbps", color: GREEN)
-        columns[1].set("UPLOAD", "\(Fmt.mbps(n?.upBps)) Mbps", color: .white)
-        columns[2].set("LOSS", String(format: "%.1f %%", loss), color: loss > 2 ? ORANGE : .white)
-        columnsRow.alphaValue = 1
-        columnsRow.isHidden = false
+        showColumns(r, except: main)
 
         showOutages(m.outages, title: "OUTAGES TODAY")
 
@@ -200,17 +207,19 @@ final class PopupPanel: NSPanel {
         default: setHeader(name + " · CONNECTED", dot: GREEN, prefix: false)
         }
 
+        // There's no power reading off Starlink: latency takes its place.
+        let main = Metric.main == .power ? .latency : Metric.main
+        let r = n.readings
         if n.state == "down" {
             bigLabel.stringValue = "Offline"
             bigLabel.textColor = RED
             bigSubLabel.stringValue = n.downSince.map { "for " + Fmt.duration(Date().timeIntervalSince($0)) } ?? ""
         } else {
-            bigLabel.textColor = .white
-            bigLabel.stringValue = n.latencyMs.map { "\(Int($0.rounded())) ms" } ?? "…"
-            bigSubLabel.stringValue = n.avgLatencyMs.map { "avg \(Int($0.rounded())) ms" } ?? ""
+            showBig(main, r, missing: "…")
         }
 
-        sparkline.points = n.latency
+        sparkline.points = r.series[main] ?? []
+        sparkline.floor = main.chartFloor
         sparkline.maxGap = NetworkStats.probeEvery * 4  // checks every few seconds, not every second
         sparkline.isHidden = false
         let onFor = Date().timeIntervalSince(n.connectedSince)
@@ -220,15 +229,13 @@ final class PopupPanel: NSPanel {
         dividers[0].isHidden = false
         sectionLabel.isHidden = true
 
-        columns[0].set("DOWNLOAD", "\(Fmt.mbps(n.downBps)) Mbps", color: GREEN)
-        columns[1].set("UPLOAD", "\(Fmt.mbps(n.upBps)) Mbps", color: .white)
-        columns[2].set("LOSS", String(format: "%.1f %%", n.lossPercent), color: n.lossPercent > 2 ? ORANGE : .white)
-        columnsRow.alphaValue = 1
-        columnsRow.isHidden = false
+        showColumns(r, except: main)
 
         showOutages(n.outages, title: "OUTAGES TODAY")
 
-        if let seen = m.lastSeen {
+        if m.lanOverlapsDish {
+            footerLabel.stringValue = "This network uses 192.168.100.x, the same addresses as the Starlink dish, so StarlinkBar can't reach it. Changing the router's LAN range fixes it."
+        } else if let seen = m.lastSeen {
             let age = Date().timeIntervalSince(seen.date)
             let lat = seen.latencyMs.map { " · \(Int($0.rounded())) ms" } ?? ""
             footerLabel.stringValue = "Last seen on Starlink " + (age < 60 ? "just now" : Fmt.ago(age) + " ago") + lat
@@ -249,7 +256,9 @@ final class PopupPanel: NSPanel {
         if starting {
             statusLine.stringValue = "Looking for the dish…"
         } else if m.source == .dish {
-            statusLine.stringValue = "No internet, and the dish at \(m.dishHost) isn't answering."
+            statusLine.stringValue = m.lanOverlapsDish
+                ? "This network uses 192.168.100.x, the same addresses as the dish, so it can't be reached."
+                : "No internet, and the dish at \(m.dishHost) isn't answering."
         } else {
             statusLine.stringValue = "The collector at \(m.collectorURL.absoluteString) isn't answering."
         }
@@ -269,6 +278,40 @@ final class PopupPanel: NSPanel {
             footerLabel.isHidden = false
         }
         dividers[2].isHidden = true
+    }
+
+    private func showCallouts(_ callouts: [ServiceState.Callout]) {
+        for v in calloutStack.arrangedSubviews { calloutStack.removeArrangedSubview(v); v.removeFromSuperview() }
+        for c in callouts {
+            let color: NSColor
+            switch c.level {
+            case .problem: color = RED
+            case .warning: color = ORANGE
+            case .info: color = BLUE
+            }
+            calloutStack.addArrangedSubview(CalloutView(c.text, color: color))
+        }
+        calloutStack.isHidden = callouts.isEmpty
+    }
+
+    /// The main reading, big, with its 30-second average next to it.
+    private func showBig(_ main: Metric, _ r: Readings, missing: String = "—") {
+        bigLabel.textColor = .white
+        bigLabel.stringValue = r.value[main].map { main.text($0) } ?? missing
+        bigSubLabel.stringValue = r.average[main].map { "avg " + main.text($0) } ?? ""
+    }
+
+    /// Every reading except the main one, as title / value / unit.
+    private func showColumns(_ r: Readings, except main: Metric) {
+        for (column, metric) in zip(columns, Metric.allCases.filter { $0 != main }) {
+            let v = r.value[metric]
+            var color = NSColor.white
+            if metric == .download { color = GREEN }
+            if metric == .loss, (v ?? 0) > 2 { color = ORANGE }
+            column.set(metric.title, metric.format(v), metric.unit, color: color)
+        }
+        columnsRow.alphaValue = 1
+        columnsRow.isHidden = false
     }
 
     private func showOutages(_ o: Outages?, title: String, hideWhenMissing: Bool = false) {
@@ -354,24 +397,28 @@ private func spacer() -> NSView {
     return v
 }
 
-/// Small uppercase title over a bold value (like EFStatus's INPUT / OUTPUT).
+/// Small uppercase title, bold value and its unit on three lines (DOWNLOAD / 1.8 / Mbps),
+/// so four of them fit side by side.
 private final class Column: NSStackView {
     private let title = label("", size: 9, weight: .semibold, alpha: 0.45)
     private let value = label("—", size: 13, weight: .bold, alpha: 1)
+    private let unit = label("", size: 10, weight: .regular, alpha: 0.5)
 
-    convenience init(alignRight: Bool = false) {
+    convenience init(align: NSLayoutConstraint.Attribute) {
         self.init(frame: .zero)
         orientation = .vertical
-        alignment = alignRight ? .trailing : .leading
+        alignment = align
         spacing = 1
         addArrangedSubview(title)
         addArrangedSubview(value)
+        addArrangedSubview(unit)
     }
 
-    func set(_ t: String, _ v: String, color: NSColor) {
+    func set(_ t: String, _ v: String, _ u: String, color: NSColor) {
         title.stringValue = t
         value.stringValue = v
         value.textColor = color
+        unit.stringValue = u
     }
 }
 
@@ -385,6 +432,37 @@ private final class CardView: NSView {
     }
 }
 
+/// A tinted box with one line of explanation (limit, suspension, update).
+private final class CalloutView: NSView {
+    private let color: NSColor
+
+    init(_ text: String, color: NSColor) {
+        self.color = color
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        let l = wrappingLabel(size: 11, weight: .medium, alpha: 1)
+        l.stringValue = text
+        l.textColor = color
+        l.preferredMaxLayoutWidth = CONTENT_W - 16
+        l.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(l)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: CONTENT_W),
+            l.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            l.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            l.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            l.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        color.withAlphaComponent(0.14).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+    }
+}
+
 private final class Divider: NSView {
     override var intrinsicContentSize: NSSize { NSSize(width: -1, height: 1) }
     override func draw(_ dirtyRect: NSRect) {
@@ -393,10 +471,11 @@ private final class Divider: NSView {
     }
 }
 
-/// Last 15 minutes of latency, drawn by hand (takes the place of the other apps' progress bar).
+/// Last 15 minutes of the main reading, drawn by hand (takes the place of the other apps' progress bar).
 private final class Sparkline: NSView {
     var points: [Point] = [] { didSet { needsDisplay = true } }
     var maxGap: TimeInterval = 10   // break the line when samples are further apart than this
+    var floor: Double = 40 { didSet { needsDisplay = true } }   // smallest top of the scale
 
     override func draw(_ dirtyRect: NSRect) {
         let bg = NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4)
@@ -407,7 +486,7 @@ private final class Sparkline: NSView {
         let start = now.addingTimeInterval(-900)
         let visible = points.filter { $0.date >= start }
         guard visible.count > 1 else { return }
-        let maxV = max(visible.map(\.value).max() ?? 1, 40) * 1.1
+        let maxV = max(visible.map(\.value).max() ?? 1, floor) * 1.1
         let inset: CGFloat = 3
         let h = bounds.height - inset * 2
         func pt(_ p: Point) -> NSPoint {

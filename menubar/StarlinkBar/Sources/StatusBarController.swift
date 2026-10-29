@@ -85,26 +85,22 @@ final class StatusBarController: NSObject {
         // Dimmed icon when there's nothing to measure (no connection at all, or still starting).
         btn.appearsDisabled = [.unreachable, .starting].contains(status)
 
-        let display = UserDefaults.standard.string(forKey: "barDisplay") ?? "latency"
+        // The popup's main reading, next to the icon (unless the user wants the icon alone).
         var text = ""
         if offStarlink {
-            // The same readout, for the network the Mac is on.
+            // The same readout, for the network the Mac is on (no power reading there: latency instead).
             let n = monitor.network
+            let main = Metric.main == .power ? .latency : Metric.main
             if n.state == "down" {
                 text = "offline"
-            } else if display == "latency" {
-                text = n.latencyMs.map { "\(Int($0.rounded())) ms" } ?? ""
-            } else if display == "download" {
-                text = n.downBps.map { "\(Fmt.mbps($0)) Mbps" } ?? ""
+            } else if Metric.showInMenuBar {
+                text = n.readings.value[main].map { main.text($0) } ?? ""
             }
         } else if status == .down {
             text = "offline"
-        } else if [.ok, .degraded].contains(status), let n = monitor.now {
-            switch display {
-            case "latency": text = n.latencyMs.map { "\(Int($0.rounded())) ms" } ?? ""
-            case "download": text = "\(Fmt.mbps(n.downBps)) Mbps"
-            default: text = ""
-            }
+        } else if [.ok, .degraded].contains(status), Metric.showInMenuBar {
+            let main = Metric.main
+            text = monitor.readings.value[main].map { main.text($0) } ?? ""
         }
         let title = text.isEmpty ? "" : " " + text
         if btn.title != title { btn.title = title }

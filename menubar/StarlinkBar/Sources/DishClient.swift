@@ -14,6 +14,7 @@ struct DishClient {
         var alerts: [String]
         var hardware: String?
         var software: String?
+        var service = ServiceState()
     }
 
     struct Sample {
@@ -21,6 +22,8 @@ struct DishClient {
         let latencyMs: Double?
         let dropRate: Double?
         let downBps: Double?
+        let upBps: Double?
+        let powerW: Double?
     }
 
     struct Outage {
@@ -29,10 +32,20 @@ struct DishClient {
         let cause: String
     }
 
+    /// An entry of the dish's own event log (about two days long).
+    struct Event {
+        static let highDownlinkPacketLoss: UInt64 = 12  // EventReason, from the dish's reflection
+
+        let reason: UInt64
+        let startTs: Double    // Unix seconds
+        let durationS: Double
+    }
+
     struct History {
         let current: Int
         let samples: [Sample]   // oldest -> newest; newest counter is current - 1
         let outages: [Outage]
+        let events: [Event]
     }
 
     enum DishError: Error { case badResponse, grpc(String) }
@@ -86,7 +99,32 @@ struct DishClient {
             currentlyObstructed: (obs.uint(5) ?? 0) != 0,
             alerts: alerts,
             hardware: info.string(2),
-            software: info.string(3))
+            software: info.string(3),
+            service: Self.service(s))
+    }
+
+    /// Plan limits, account state and pending updates (dish_get_status fields 1021-1045, 2000).
+    private static func service(_ s: Proto.Message) -> ServiceState {
+        let update = Proto.fields(s.bytes(1026) ?? Data())
+        let config = Proto.fields(s.bytes(2000) ?? Data())
+        var st = ServiceState()
+        st.disablement = s.uint(1024) ?? 0
+        st.downloadLimit = s.uint(1044) ?? 0
+        st.uploadLimit = s.uint(1045) ?? 0
+        st.updateState = s.uint(1021) ?? 0
+        st.updateProgress = update.float(2)
+        st.rebootReady = (s.uint(1030) ?? 0) != 0 || st.updateState == ServiceState.rebootRequired
+        st.rebootHour = config.uint(9).map(Int.init)
+        st.rebootScheduled = update.uint(4).flatMap(Self.unixSeconds)
+        return st
+    }
+
+    /// reboot_scheduled_utc_time doesn't document its unit: accept s, ms or ns if it lands in the next few days.
+    private static func unixSeconds(_ v: UInt64) -> Date? {
+        let raw = Double(v)
+        let s = raw > 1e17 ? raw / 1e9 : raw > 1e14 ? raw / 1e6 : raw > 1e11 ? raw / 1e3 : raw
+        let d = Date(timeIntervalSince1970: s)
+        return d.timeIntervalSinceNow > 0 && d.timeIntervalSinceNow < 4 * 86400 ? d : nil
     }
 
     func history() async throws -> History {
@@ -95,11 +133,12 @@ struct DishClient {
         var current = 0
         var arrays: [Int: [Float]] = [:]
         var outages: [Outage] = []
+        var events: [Event] = []
         for f in Proto.parse(body) {
             switch (f.number, f.value) {
             case (1, .varint(let v)):
                 current = Int(v)
-            case (1001...1004, .bytes(let d)):
+            case (1001...1004, .bytes(let d)), (1010, .bytes(let d)):  // 1010 = power_in (W)
                 arrays[f.number] = Proto.floats(d)
             case (1009, .bytes(let d)):
                 let o = Proto.fields(d)
@@ -107,19 +146,28 @@ struct DishClient {
                     startTs: Double(o.uint(2) ?? 0) / 1e9 + Self.gpsToUnix,
                     durationS: Double(o.uint(3) ?? 0) / 1e9,
                     cause: Self.causes[o.uint(1) ?? 0] ?? "cause_\(o.uint(1) ?? 0)"))
+            case (1011, .bytes(let d)):  // event_log -> repeated events (field 1)
+                for e in Proto.parse(d) {
+                    guard e.number == 1, case .bytes(let ev) = e.value else { continue }
+                    let m = Proto.fields(ev)
+                    events.append(Event(reason: m.uint(2) ?? 0,
+                                        startTs: Double(m.uint(3) ?? 0) / 1e9,
+                                        durationS: Double(m.uint(4) ?? 0) / 1e9))
+                }
             default:
                 break
             }
         }
         let size = arrays.values.map(\.count).min() ?? 0
-        guard size > 0 else { return History(current: current, samples: [], outages: outages) }
+        guard size > 0 else { return History(current: current, samples: [], outages: outages, events: events) }
         let n = min(current, size)  // after a dish reboot the buffer is not full yet
         func at(_ f: Int, _ i: Int) -> Double? { arrays[f].map { Double($0[i]) } }
         let samples = (current - n..<current).map { c -> Sample in
             let i = c % size
-            return Sample(counter: c, latencyMs: at(1002, i), dropRate: at(1001, i), downBps: at(1003, i))
+            return Sample(counter: c, latencyMs: at(1002, i), dropRate: at(1001, i), downBps: at(1003, i),
+                          upBps: at(1004, i), powerW: at(1010, i))
         }
-        return History(current: current, samples: samples, outages: outages)
+        return History(current: current, samples: samples, outages: outages, events: events)
     }
 
     // MARK: - Transport

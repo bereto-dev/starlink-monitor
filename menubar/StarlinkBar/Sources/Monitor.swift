@@ -11,8 +11,12 @@ final class Monitor: ObservableObject {
 
     @Published private(set) var now: NowStatus?
     @Published private(set) var latency: [Point] = []
-    @Published private(set) var download: [Point] = []
+    @Published private(set) var download: [Point] = []   // Mbps
+    @Published private(set) var upload: [Point] = []     // Mbps
+    @Published private(set) var loss: [Point] = []       // %
+    @Published private(set) var power: [Point] = []      // W, only in the dish's history (no live value)
     @Published private(set) var outages: Outages?
+    @Published private(set) var service: ServiceState?   // plan limits, account state, pending update (dish only)
     @Published private(set) var reachable = true   // dish or collector answering
     @Published private(set) var offStarlink = false // dish silent but internet works: another network
     @Published private(set) var lastSeen: LastSeen? = Monitor.loadLastSeen()
@@ -21,6 +25,7 @@ final class Monitor: ObservableObject {
 
     static let nowEvery: TimeInterval = 2
     static let historyEvery: TimeInterval = 30
+    static let historyEveryForPower: TimeInterval = 10  // power only comes in the history: fetch it more often when it's shown big
     static let unreachableAfter: TimeInterval = 8
     static let outageNotifyAfter: TimeInterval = 10
     static let highLatencyMs = 80.0
@@ -40,6 +45,7 @@ final class Monitor: ObservableObject {
     private var offStarlinkInterface: String?
     private var lastDishAttempt = Date.distantPast
     private var lastSeenSaved = Date.distantPast
+    private var lastHistory = Date.distantPast
     private let pathMonitor = NWPathMonitor()
     static let saveLastSeenEvery: TimeInterval = 30
     private let decoder: JSONDecoder = {
@@ -58,6 +64,7 @@ final class Monitor: ObservableObject {
     private var outageNotified = false
     private var highLatencySince: Date?
     private var highLatencyNotified = false
+    static let packetLossNotifyWithin: TimeInterval = 15 * 60  // older loss events aren't news anymore
 
     var source: Source {
         Source(rawValue: UserDefaults.standard.string(forKey: "source") ?? "") ?? .dish
@@ -71,6 +78,24 @@ final class Monitor: ObservableObject {
     var collectorURL: URL {
         let s = UserDefaults.standard.string(forKey: "collectorURL") ?? Self.defaultCollectorURL
         return URL(string: s) ?? URL(string: Self.defaultCollectorURL)!
+    }
+
+    /// The dish's readings (or the collector's), for the popup and the menu bar.
+    var readings: Readings {
+        var r = Readings()
+        let n = now
+        r.value = [.latency: n?.latencyMs, .download: n?.downBps.map { $0 / 1e6 }, .upload: n?.upBps.map { $0 / 1e6 },
+                   .loss: n?.dropRate.map { $0 * 100 }, .power: power.last?.value].compactMapValues { $0 }
+        r.series = [.latency: latency, .download: download, .upload: upload, .loss: loss, .power: power]
+        r.average[.latency] = n?.latencyAvg30sMs
+        for m in [Metric.download, .upload, .loss, .power] { r.average[m] = Readings.recentAverage(r.series[m] ?? []) }
+        return r
+    }
+
+    /// The Mac's own network uses 192.168.100.x, the dish's range, so the dish can't be reached.
+    var lanOverlapsDish: Bool {
+        guard dishHost == Self.defaultDishHost, let i = interface, let ip = NetworkStats.ipv4(i) else { return false }
+        return ip.hasPrefix("192.168.100.")
     }
 
     var status: Status {
@@ -101,8 +126,12 @@ final class Monitor: ObservableObject {
             Timer.scheduledTimer(withTimeInterval: Self.nowEvery, repeats: true) { [weak self] _ in
                 Task { @MainActor in await self?.pollNow() }
             },
-            Timer.scheduledTimer(withTimeInterval: Self.historyEvery, repeats: true) { [weak self] _ in
-                Task { @MainActor in await self?.pollHistory() }
+            Timer.scheduledTimer(withTimeInterval: Self.historyEveryForPower, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    let every = Metric.main == .power ? Self.historyEveryForPower : Self.historyEvery
+                    if Date().timeIntervalSince(self.lastHistory) >= every - 1 { await self.pollHistory() }
+                }
             },
         ]
         refreshAll()
@@ -114,7 +143,11 @@ final class Monitor: ObservableObject {
         now = nil
         latency = []
         download = []
+        upload = []
+        loss = []
+        power = []
         outages = nil
+        service = nil
         reachable = true
         offStarlink = false
         offStarlinkInterface = nil
@@ -168,7 +201,9 @@ final class Monitor: ObservableObject {
                 rules.update(s)
                 lastOk = Date()
                 reachable = true
+                service = Self.debugService ?? s.service
                 apply(rules.snapshot(s))
+                if let service { checkUpdate(service, software: s.software) }
                 rememberLastSeen()
                 return
             }
@@ -269,27 +304,33 @@ final class Monitor: ObservableObject {
 
     private func apply(_ n: NowStatus) {
         now = n
-        if n.dishReachable, let lat = n.latencyMs {
-            appendLive(Date(timeIntervalSince1970: n.ts), lat, n.downBps)
-        }
+        if n.dishReachable { appendLive(Date(timeIntervalSince1970: n.ts), n) }
         checkNotifications(n)
     }
 
     private func pollHistory() async {
         let gen = generation
+        lastHistory = Date()
         switch source {
         case .dish:
             if offStarlink { return }  // resumes as soon as the dish answers again
             guard let h = try? await DishClient(host: dishHost).history(), gen == generation else { return }
             let fetched = Date()
-            var lat: [Point] = [], down: [Point] = []
+            var lat: [Point] = [], down: [Point] = [], up: [Point] = [], drop: [Point] = [], watts: [Point] = []
             for s in h.samples {
                 let d = fetched.addingTimeInterval(-Double(h.current - 1 - s.counter))
                 if let v = s.latencyMs, (s.dropRate ?? 0) < 1 { lat.append(Point(date: d, value: v)) }
                 if let v = s.downBps { down.append(Point(date: d, value: v / 1e6)) }
+                if let v = s.upBps { up.append(Point(date: d, value: v / 1e6)) }
+                if let v = s.dropRate { drop.append(Point(date: d, value: v * 100)) }
+                if let v = s.powerW { watts.append(Point(date: d, value: v)) }
             }
             latency = lat
             download = down
+            upload = up
+            loss = drop
+            power = watts
+            checkPacketLoss(h.events)
             let midnight = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
             let today = h.outages.filter { $0.startTs >= midnight }.sorted { $0.startTs > $1.startTs }
             outages = Outages(
@@ -324,10 +365,14 @@ final class Monitor: ObservableObject {
         return try decoder.decode(T.self, from: data)
     }
 
-    private func appendLive(_ date: Date, _ lat: Double, _ down: Double?) {
+    /// Adds the 2-second reading to the charts between history fetches (power has no live value).
+    private func appendLive(_ date: Date, _ n: NowStatus) {
+        guard let lat = n.latencyMs else { return }
         if let last = latency.last?.date, last >= date.addingTimeInterval(-0.5) { return }
         latency.append(Point(date: date, value: lat))
-        if let down { download.append(Point(date: date, value: down / 1e6)) }
+        if let v = n.downBps { download.append(Point(date: date, value: v / 1e6)) }
+        if let v = n.upBps { upload.append(Point(date: date, value: v / 1e6)) }
+        if let v = n.dropRate { loss.append(Point(date: date, value: v * 100)) }
         trim()
     }
 
@@ -335,6 +380,9 @@ final class Monitor: ObservableObject {
         let cut = Date().addingTimeInterval(-900)
         latency.removeAll { $0.date < cut }
         download.removeAll { $0.date < cut }
+        upload.removeAll { $0.date < cut }
+        loss.removeAll { $0.date < cut }
+        power.removeAll { $0.date < cut }
     }
 
     // MARK: - Notifications
@@ -350,8 +398,10 @@ final class Monitor: ObservableObject {
             if !outageNotified, Date().timeIntervalSince(start) > Self.outageNotifyAfter {
                 outageNotified = true
                 if notifyOutages {
-                    notify("Starlink offline",
-                           n.dishReachable ? "The dish responds but there is no connection." : "The dish is not responding.")
+                    let body = service?.rebootReady == true && !n.dishReachable
+                        ? "The dish is restarting to install an update."
+                        : n.dishReachable ? "The dish responds but there is no connection." : "The dish is not responding."
+                    notify("Starlink offline", body)
                 }
             }
         } else if let start = outageStart {
@@ -376,6 +426,50 @@ final class Monitor: ObservableObject {
             highLatencyNotified = false
         }
     }
+
+    /// The dish logs a HIGH_DOWNLINK_PACKET_LOSS event when the link degrades without dropping
+    /// (calls and video stutter). Tell the user once per event, only about recent ones.
+    private func checkPacketLoss(_ events: [DishClient.Event]) {
+        let d = UserDefaults.standard
+        let losses = events.filter { $0.reason == DishClient.Event.highDownlinkPacketLoss }
+        guard let newest = losses.map(\.startTs).max() else { return }
+        let seen = d.double(forKey: "lastPacketLossEvent")
+        d.set(max(seen, newest), forKey: "lastPacketLossEvent")
+        guard seen > 0 else { return }  // first run: the log's old events aren't news
+        let fresh = losses.filter { $0.startTs > seen && Date().timeIntervalSince1970 - $0.startTs < Self.packetLossNotifyWithin }
+        guard !fresh.isEmpty, now?.state != "down", d.object(forKey: "notifyPacketLoss") as? Bool ?? true else { return }
+        if fresh.count == 1, let e = fresh.first {
+            notify("Starlink is losing packets",
+                   "At \(Fmt.clock(e.startTs)) the connection degraded for \(Fmt.duration(e.durationS)) without dropping. Calls and video may have stuttered.")
+        } else {
+            notify("Starlink is losing packets",
+                   "\(fresh.count) times in the last few minutes the connection degraded without dropping. Calls and video may stutter.")
+        }
+    }
+
+    /// Once per dish software version: an update is installed and the dish will restart for it.
+    private func checkUpdate(_ s: ServiceState, software: String?) {
+        let d = UserDefaults.standard
+        guard s.rebootReady, d.object(forKey: "notifyUpdates") as? Bool ?? true else { return }
+        let key = software ?? "unknown"
+        guard d.string(forKey: "updateNotifiedFor") != key else { return }
+        d.set(key, forKey: "updateNotifiedFor")
+        notify("Starlink will restart to update",
+               "The dish has an update ready and will restart \(s.rebootWhen). Expect about a minute without internet.")
+    }
+
+    /// Debug: `-debugService "7,5,1,6"` fakes disablement, download limit, upload limit and update state
+    /// (to see the popup's callouts without a real limit).
+    private static let debugService: ServiceState? = {
+        guard let v = UserDefaults.standard.string(forKey: "debugService") else { return nil }
+        let n = v.split(separator: ",").compactMap { UInt64($0.trimmingCharacters(in: .whitespaces)) }
+        guard n.count == 4 else { return nil }
+        var st = ServiceState()
+        (st.disablement, st.downloadLimit, st.uploadLimit, st.updateState) = (n[0], n[1], n[2], n[3])
+        st.rebootReady = st.updateState == ServiceState.rebootRequired
+        st.rebootHour = 3
+        return st
+    }()
 
     private func notify(_ title: String, _ body: String) {
         let c = UNMutableNotificationContent()
